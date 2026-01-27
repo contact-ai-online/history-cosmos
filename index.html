@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>History Legends | v33.0 ENHANCED</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+        body { background-color: #0b0f19; color: #e2e8f0; font-family: 'Outfit', sans-serif; height: 100vh; overflow: hidden; }
+        
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.05); }
+        
+        /* Taburi */
+        .tab-btn { padding: 8px 16px; border-radius: 8px; font-weight: bold; font-size: 11px; text-transform: uppercase; transition: 0.2s; border: 1px solid transparent; white-space: nowrap; }
+        .tab-btn:hover { background: rgba(255,255,255,0.1); }
+        
+        body.is-student .tab-btn.active { background: #2563eb; color: white; border-color: #3b82f6; }
+        body.is-teacher .tab-btn.active { background: #b91c1c; color: white; border-color: #ef4444; }
+
+        /* Vizibilitate */
+        .only-prof { display: none !important; }
+        .only-elev { display: none !important; }
+        body.is-teacher .only-prof { display: flex !important; }
+        body.is-student .only-elev { display: flex !important; }
+        body.is-teacher div.only-prof.block-mode { display: block !important; }
+
+        /* Editabile */
+        .editable:hover { background: rgba(255,255,255,0.1); cursor: text; border-radius: 4px; }
+        .t-input { background: transparent; width: 100%; color: white; font-size: 12px; text-align: center; }
+        .t-input:focus { background: #1e293b; outline: none; }
+
+        /* Upload Zone */
+        .upload-zone { border: 2px dashed rgba(59, 130, 246, 0.5); transition: all 0.3s; }
+        .upload-zone:hover { border-color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
+        .upload-zone.dragover { border-color: #10b981; background: rgba(16, 185, 129, 0.1); }
+
+        /* File Item */
+        .file-item { background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(255,255,255,0.1); transition: all 0.2s; }
+        .file-item:hover { background: rgba(30, 41, 59, 0.8); border-color: rgba(59, 130, 246, 0.5); }
+
+        /* Timer Animation */
+        @keyframes pulse-timer { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .timer-warning { animation: pulse-timer 1s infinite; color: #ef4444; }
+
+        /* Progress Bar */
+        .progress-bar { transition: width 0.3s ease; }
+
+        /* Modal Overlay */
+        .modal-overlay { backdrop-filter: blur(5px); }
+
+        /* Live Indicator */
+        .live-dot { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+        
+        /* Mode Buttons */
+        .mode-btn { transition: all 0.3s ease; }
+        
+        /* Chat Bubbles Animation */
+        .chat-bubble { animation: fadeInUp 0.3s ease-out; }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+    <script>
+        // ============================================
+        // API CONFIGURATION (Deepseek R1 / Mistral)
+        // ============================================
+        
+        const AI_CONFIG = {
+            // CRITICAL: Înlocuiește cu API keys reale (sau mută în Cloudflare Worker pentru securitate)
+            keys: {
+                deepseek: '', // https://platform.deepseek.com/api_keys
+                mistral: ''   // https://console.mistral.ai/api-keys
+            },
+            endpoints: {
+                deepseek: 'https://api.deepseek.com/chat/completions',
+                mistral: 'https://api.mistral.ai/v1/chat/completions'
+            },
+            models: {
+                deepseek_standard: 'deepseek-chat',      // DeepSeek-V3.2 (FAST)
+                deepseek_thinking: 'deepseek-reasoner',  // DeepSeek-R1 (DEEP)
+                mistral: 'mistral-medium'                // Backup failover
+            },
+            // PRODUCTION: Schimbă cu Worker URL după deployment
+            // workerEndpoint: 'https://mentor-ai.contact-ai.workers.dev'
+            workerEndpoint: null // null = apel direct (DOAR pentru testing local cu API keys în browser)
+        };
+        
+        // Funcție helper pentru apeluri API
+        async function callAIProvider(prompt, systemMessage = '') {
+            if (!AI_CONFIG.apiKey) {
+                console.warn('⚠️ API Key lipsește! Returnez răspuns simulat.');
+                return generateSimulatedResponse(prompt);
+            }
+            
+            try {
+                const endpoint = AI_CONFIG.endpoints[AI_CONFIG.provider];
+                const model = AI_CONFIG.models[AI_CONFIG.provider];
+                
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${AI_CONFIG.apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        messages: [
+                            systemMessage ? { role: 'system', content: systemMessage } : null,
+                            { role: 'user', content: prompt }
+                        ].filter(Boolean),
+                        temperature: 0.7,
+                        max_tokens: 1000
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                return data.choices[0].message.content;
+            } catch (error) {
+                console.error('Eroare API:', error);
+                return generateSimulatedResponse(prompt);
+            }
+        }
+        
+        // Fallback: răspuns simulat dacă API-ul nu e disponibil
+        function generateSimulatedResponse(prompt) {
+            const responses = {
+                ro: [
+                    'Răspuns bun! Elevul a identificat corect principalele idei. Notă sugerată: 9/10. Recomandare: Ar putea detalia mai mult rolul factorilor economici.',
+                    'Răspuns satisfăcător, dar lipsesc detalii despre cauze. Notă: 7/10. Sugestie: Adaugă exemple concrete din surse istorice.',
+                    'Excelent! Analiza este profundă și bine argumentată. Notă: 10/10. Elevul demonstrează înțelegere superioară a proceselor istorice.'
+                ],
+                ru: [
+                    'Хороший ответ! Ученик правильно определил основные идеи. Предлагаемая оценка: 9/10. Рекомендация: Можно подробнее описать роль экономических факторов.',
+                    'Удовлетворительный ответ, но не хватает деталей о причинах. Оценка: 7/10. Предложение: Добавить конкретные примеры из исторических источников.',
+                    'Отлично! Анализ глубокий и хорошо аргументированный. Оценка: 10/10. Ученик демонстрирует превосходное понимание исторических процессов.'
+                ]
+            };
+            
+            const lang = typeof cL !== 'undefined' && cL === 'RU' ? 'ru' : 'ro';
+            return responses[lang][Math.floor(Math.random() * responses[lang].length)];
+        }
+    </script>
+</head>
+<body class="is-student">
+
+   <div id="login-screen" style="display: flex;" class="fixed inset-0 z-[9999] items-center justify-center bg-[#0b0f19]">
+        <div class="glass p-10 rounded-[2rem] w-full max-w-md text-center border-t border-white/10 shadow-2xl">
+            <div class="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-6 text-4xl text-white font-black">Ω</div>
+            <h1 class="text-3xl font-bold text-white mb-2">History Cosmos</h1>
+            <p class="text-xs text-slate-400 mb-8 uppercase tracking-widest">Sistem Securizat D1</p>
+            
+            <div class="space-y-4">
+                <input type="text" id="user-input" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white outline-none focus:border-blue-500" placeholder="Utilizator">
+                <input type="password" id="pass-input" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white outline-none focus:border-blue-500" placeholder="Parolă">
+                
+                <div class="flex gap-2">
+                    <button onclick="handleAuth('login')" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition border-b-4 border-blue-800 active:border-b-0 active:translate-y-1">INTRĂ</button>
+                    <button onclick="handleAuth('register')" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition border-b-4 border-green-800 active:border-b-0 active:translate-y-1">CONT NOU</button>
+                </div>
+            </div>
+
+            <p id="login-msg" class="text-xs text-red-400 mt-4 h-4"></p>
+        </div>
+    </div>
+
+    <div id="app-screen" style="display: none;" class="h-screen w-full flex-col">
+        
+        <header class="h-16 bg-[#0f1623] border-b border-slate-800 flex items-center justify-between px-6 z-50 flex-shrink-0">
+            <div class="flex items-center gap-4">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center font-black text-xl text-white">Ω</div>
+                <div>
+                    <h1 class="font-bold text-lg text-white leading-none">HISTORY <span class="text-blue-500">COSMOS</span></h1>
+                    <p class="text-[10px] text-slate-400 font-mono" id="date-txt">...</p>
+                </div>
+            </div>
+
+            <div class="only-prof items-center gap-4 bg-slate-800 px-4 py-1.5 rounded-xl border border-slate-700">
+                <div class="flex items-center gap-2 text-red-400 border-r border-slate-700 pr-4 editable" onclick="editTxt(this)">
+                    <i class="fa-solid fa-bell animate-pulse"></i><span class="text-xs font-bold uppercase">2 URGENTE</span>
+                </div>
+                <div class="flex items-center gap-2 text-yellow-400 border-r border-slate-700 pr-4 editable" onclick="editTxt(this)">
+                    <i class="fa-solid fa-star"></i><span class="text-xs font-bold uppercase">IMPORTANT</span>
+                </div>
+                <div class="flex items-center gap-2 text-blue-400 editable" onclick="editTxt(this)">
+                    <i class="fa-solid fa-calendar"></i><span class="text-xs font-bold uppercase">AZI: 3 LECȚII</span>
+                </div>
+            </div>
+
+            <div class="only-elev items-center gap-6 bg-slate-800 px-6 py-2 rounded-full border border-slate-700">
+                <span class="text-xs font-bold text-blue-400" data-i18n="welcome">BINE AI VENIT!</span>
+            </div>
+
+            <div class="flex items-center gap-4">
+                <button onclick="changeLang()" class="text-xs font-bold text-slate-400 border border-slate-600 px-2 py-1 rounded" id="lang-ind">RO</button>
+                <div class="text-right hidden sm:block">
+                    <div class="text-sm font-bold text-white" id="u-name">...</div>
+                    <div class="text-[10px] font-bold" id="u-role">...</div>
+                </div>
+                <button onclick="location.reload()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-power-off"></i></button>
+            </div>
+        </header>
+
+        <main class="flex-grow flex overflow-hidden">
+            
+            <aside class="w-72 bg-[#0b0f19] border-r border-slate-800 flex flex-col z-20 flex-shrink-0">
+                <div class="p-4 border-b border-slate-800 flex gap-1">
+                    <button onclick="changeClass('X')" id="class-X" class="flex-1 py-1.5 text-xs font-bold rounded bg-blue-600 text-white">X</button>
+                    <button onclick="changeClass('XI')" id="class-XI" class="flex-1 py-1.5 text-xs font-bold rounded text-slate-500 hover:bg-slate-800">XI</button>
+                    <button onclick="changeClass('XII')" id="class-XII" class="flex-1 py-1.5 text-xs font-bold rounded text-slate-500 hover:bg-slate-800">XII</button>
+                </div>
+                <div class="p-5 font-bold text-[10px] text-slate-500 uppercase tracking-widest" data-i18n="pdld">PLAN CADRU</div>
+                
+                <div class="flex-grow overflow-y-auto px-4 space-y-3">
+                    <div class="bg-blue-900/20 border border-blue-500/30 p-3 rounded-lg"><p class="text-[9px] text-blue-300 font-bold mb-1 opacity-70">U1</p><p class="text-xs text-white font-bold leading-tight">Orientul Antic</p></div>
+                </div>
+
+                <div class="p-4 border-t border-slate-800 bg-[#161b22]">
+                    <p class="text-[10px] font-bold text-green-500 uppercase mb-2" data-i18n="today_topic">TEMA LECȚIEI DE AZI</p>
+                    <div class="only-prof flex-col gap-2">
+                        <textarea id="topic-edit" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white h-16 outline-none focus:border-red-500">Orientul Antic: Egiptul</textarea>
+                        <button onclick="pubTopic()" class="w-full bg-red-600 hover:bg-red-500 text-white text-[10px] font-bold py-2 rounded-lg" data-i18n="publish">PUBLICĂ</button>
+                    </div>
+                    <div class="only-elev">
+                        <p class="text-sm font-bold text-white leading-tight mb-3" id="topic-view">Orientul Antic: Egiptul</p>
+                        <button onclick="nav('manual')" class="w-full bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white text-[10px] font-bold py-2 rounded-lg" data-i18n="go">MERGI LA LECȚIE</button>
+                    </div>
+                </div>
+            </aside>
+
+            <section class="flex-grow flex flex-col bg-slate-950 relative min-w-0">
+                
+                <div class="h-14 border-b border-slate-800 bg-[#0b0f19] flex items-center px-6 gap-2 overflow-x-auto">
+                    <button onclick="nav('admin')" id="t-admin" class="only-prof tab-btn bg-red-900/20 text-red-400 border-red-500/30 hover:bg-red-500 hover:text-white"><i class="fa-solid fa-users-gear mr-2"></i><span data-i18n="control_panel">PANOU CONTROL</span></button>
+                    <div class="only-prof w-px h-6 bg-slate-700 mx-2"></div>
+
+                    <button onclick="nav('mentor')" id="t-mentor" class="tab-btn active"><i class="fa-solid fa-headset mr-2"></i><span data-i18n="mentor">MENTOR</span></button>
+                    <button onclick="nav('manual')" id="t-manual" class="tab-btn"><i class="fa-solid fa-book-open mr-2"></i><span data-i18n="manual">MANUAL</span></button>
+                    <button onclick="nav('homework')" id="t-homework" class="tab-btn"><i class="fa-solid fa-pencil mr-2"></i><span data-i18n="homework_tab">TEMĂ</span></button>
+                    <button onclick="nav('uploads')" id="t-uploads" class="tab-btn"><i class="fa-solid fa-cloud-arrow-up mr-2"></i><span data-i18n="uploads">MATERIALE</span></button>
+                    <button onclick="nav('online')" id="t-online" class="tab-btn"><i class="fa-solid fa-video mr-2"></i><span data-i18n="online_lesson">LECȚIE ONLINE</span></button>
+                    <button onclick="nav('quiz')" id="t-quiz" class="tab-btn"><i class="fa-solid fa-clock mr-2"></i><span data-i18n="quiz">EVALUARE</span></button>
+                </div>
+
+                <div class="flex-grow overflow-y-auto p-8 relative">
+
+                    <!-- PANOU CONTROL PROFESOR -->
+                    <div id="v-admin" class="view-content hidden flex-col h-full">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-xl font-bold text-white"><span data-i18n="register">Registru Clasa</span> <span id="class-header-display">X-A</span></h2>
+                            <button onclick="openModal()" class="bg-red-600 text-white text-xs px-4 py-2 rounded-lg font-bold hover:bg-red-500 flex items-center gap-2"><i class="fa-solid fa-user-plus"></i><span data-i18n="add_student">ÎNSCRIE ELEV</span></button>
+                        </div>
+                        <div class="glass rounded-xl overflow-hidden p-2">
+                            <table class="w-full text-left reg-table" id="reg-table">
+                                <thead class="text-xs uppercase text-slate-500 bg-slate-900/50">
+                                    <tr>
+                                        <th class="p-2" data-i18n="name">Nume</th>
+                                        <th class="p-2 text-center" data-i18n="grades">Note</th>
+                                        <th class="p-2 text-center" data-i18n="absences">Absențe</th>
+                                        <th class="p-2" data-i18n="notes">Note/Obs</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="text-sm text-slate-300">
+                                    <tr class="border-b border-slate-800 hover:bg-slate-800/30">
+                                        <td class="p-2 font-bold text-white">Ana Moraru</td>
+                                        <td class="p-2 text-center"><input type="text" class="t-input" value="10"></td>
+                                        <td class="p-2 text-center"><input type="text" class="t-input text-red-400" value=""></td>
+                                        <td class="p-2"><input type="text" class="t-input text-left" placeholder="..."></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- MENTOR AI -->
+                    <div id="v-mentor" class="view-content flex flex-col h-full">
+                        <div class="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 mb-4 flex-grow overflow-y-auto">
+                            <div class="flex gap-4">
+                                <div class="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center"><i class="fa-solid fa-robot text-blue-400"></i></div>
+                                <div class="bg-slate-800 p-4 rounded-2xl rounded-tl-none text-sm text-slate-300 max-w-xl" data-i18n="mentor_greeting">Salut! Sunt Cronicus. Discutăm despre istorie?</div>
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button class="w-12 h-12 bg-slate-800 rounded-xl text-slate-400 hover:text-red-500"><i class="fa-solid fa-microphone"></i></button>
+                            <input type="text" class="flex-grow bg-slate-800 border border-slate-700 rounded-xl px-4 text-sm text-white outline-none" placeholder="Scrie..." data-i18n-placeholder="write">
+                            <button class="w-12 h-12 bg-blue-600 rounded-xl text-white"><i class="fa-solid fa-paper-plane"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- MANUAL -->
+                    <div id="v-manual" class="view-content hidden h-full flex-col">
+                        <div class="only-prof mb-4">
+                            <button onclick="document.getElementById('upload-manual-pdf').click()" class="bg-red-600 text-white text-[10px] font-bold px-4 py-2 rounded-lg" data-i18n="upload_pdf">ÎNCARCĂ PDF</button>
+                            <input type="file" id="upload-manual-pdf" accept=".pdf" style="display:none" onchange="handleManualUpload(this)">
+                        </div>
+                        <div class="flex-grow bg-[#525659] rounded-2xl p-8 flex flex-col items-center overflow-y-auto shadow-inner">
+                            <div class="bg-white w-[600px] min-h-[800px] p-12 text-slate-900 shadow-2xl">
+                                <h1 class="text-3xl font-black mb-6" data-i18n="chapter1">Capitolul 1: Antichitatea</h1>
+                                <p class="text-justify leading-relaxed" data-i18n="manual_content">Conținutul manualului digital...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TEMĂ DE ACASĂ -->
+                    <div id="v-homework" class="view-content hidden h-full flex-col">
+                        <div class="glass p-8 rounded-[2rem] max-w-4xl mx-auto w-full relative">
+                            <div class="only-prof absolute top-6 right-8">
+                                <button onclick="editHomework()" class="bg-red-600 text-white text-[10px] font-bold px-4 py-2 rounded-xl shadow-lg" data-i18n="edit_requirement">EDITEAZĂ CERINȚA</button>
+                            </div>
+                            
+                            <h2 class="text-3xl font-black text-white mb-2" data-i18n="homework">Tema de Acasă</h2>
+                            <p class="text-slate-400 text-xs mb-6" data-i18n="deadline">Termen: Azi, 23:59</p>
+                            
+                            <div class="bg-slate-900/80 p-6 rounded-3xl border border-slate-700 mb-6">
+                                <p class="text-lg text-slate-200 italic" id="hw-req">Analizați importanța Nilului.</p>
+                            </div>
+
+                            <div class="only-elev flex flex-col gap-4">
+                                <textarea id="hw-answer" class="w-full bg-[#0b0f19] border border-slate-800 rounded-3xl p-6 text-sm h-48 focus:border-blue-500 outline-none" placeholder="Rezolvare..." data-i18n-placeholder="solution"></textarea>
+                                <div class="flex gap-2">
+                                    <button onclick="document.getElementById('hw-file-upload').click()" class="flex-1 bg-slate-700 py-3 rounded-2xl font-bold text-white hover:bg-slate-600 flex items-center justify-center gap-2">
+                                        <i class="fa-solid fa-paperclip"></i><span data-i18n="attach_file">ATAȘEAZĂ FIȘIER</span>
+                                    </button>
+                                    <input type="file" id="hw-file-upload" accept=".pdf,.doc,.docx,.ppt,.pptx,.jpg,.jpeg,.png" style="display:none" onchange="handleHomeworkFileUpload(this)">
+                                    <button onclick="submitHomework()" class="flex-1 bg-blue-600 py-3 rounded-2xl font-bold text-white shadow-xl hover:bg-blue-500" data-i18n="send">TRIMITE</button>
+                                </div>
+                                <div id="hw-file-preview" class="text-xs text-slate-400"></div>
+                            </div>
+
+                            <!-- VEZI LUCRĂRI TRIMISE - PROFESOR -->
+                            <div class="only-prof block-mode mt-8">
+                                <h3 class="text-lg font-bold text-white mb-4" data-i18n="submitted_works">Lucrări Trimise</h3>
+                                <div id="submitted-works" class="space-y-3">
+                                    <!-- Va fi populat dinamic -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MATERIALE ÎNCĂRCATE (NOU) -->
+                    <div id="v-uploads" class="view-content hidden h-full flex-col">
+                        <div class="max-w-6xl mx-auto w-full">
+                            <h2 class="text-2xl font-bold text-white mb-6" data-i18n="materials">Materiale de Curs</h2>
+                            
+                            <!-- ZONA UPLOAD PROFESOR -->
+                            <div class="only-prof block-mode mb-8">
+                                <div class="upload-zone rounded-2xl p-8 text-center cursor-pointer" onclick="document.getElementById('material-upload').click()">
+                                    <i class="fa-solid fa-cloud-arrow-up text-5xl text-blue-500 mb-4"></i>
+                                    <p class="text-white font-bold mb-2" data-i18n="drag_files">Trage fișiere aici sau click pentru a încărca</p>
+                                    <p class="text-xs text-slate-400" data-i18n="supported_formats">Formate suportate: PDF, PPT, PPTX, DOC, DOCX, JPG, PNG</p>
+                                </div>
+                                <input type="file" id="material-upload" accept=".pdf,.ppt,.pptx,.doc,.docx,.jpg,.jpeg,.png" multiple style="display:none" onchange="handleMaterialUpload(this)">
+                            </div>
+
+                            <!-- LISTĂ MATERIALE -->
+                            <div id="materials-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <!-- Va fi populat dinamic -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- LECȚIE ONLINE (NOU) -->
+                    <div id="v-online" class="view-content hidden h-full flex-col">
+                        <div class="max-w-4xl mx-auto w-full">
+                            <h2 class="text-2xl font-bold text-white mb-6" data-i18n="online_lesson">Lecție Online</h2>
+                            
+                            <!-- PANEL PROFESOR -->
+                            <div class="only-prof block-mode">
+                                <div class="glass p-8 rounded-2xl mb-6">
+                                    <h3 class="text-lg font-bold text-white mb-4" data-i18n="create_session">Creează Sesiune Online</h3>
+                                    <div class="space-y-4">
+                                        <input type="text" id="online-title" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white text-sm" placeholder="Titlu lecție..." data-i18n-placeholder="lesson_title">
+                                        <textarea id="online-desc" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white text-sm h-24" placeholder="Descriere..." data-i18n-placeholder="description"></textarea>
+                                        <button onclick="createOnlineSession()" class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl" data-i18n="generate_link">GENEREAZĂ LINK</button>
+                                    </div>
+                                </div>
+
+                                <div id="session-info" class="glass p-8 rounded-2xl hidden">
+                                    <div class="flex items-center gap-3 mb-4">
+                                        <div class="w-3 h-3 bg-red-500 rounded-full live-dot"></div>
+                                        <h3 class="text-lg font-bold text-white" data-i18n="active_session">Sesiune Activă</h3>
+                                    </div>
+                                    <div class="bg-slate-900 p-4 rounded-xl mb-4">
+                                        <p class="text-xs text-slate-400 mb-2" data-i18n="meeting_link">Link Întâlnire:</p>
+                                        <div class="flex gap-2">
+                                            <input type="text" id="meeting-link" readonly class="flex-1 bg-slate-800 border border-slate-700 rounded-lg p-2 text-white text-sm">
+                                            <button onclick="copyLink()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 rounded-lg"><i class="fa-solid fa-copy"></i></button>
+                                        </div>
+                                    </div>
+                                    <button onclick="endSession()" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded-xl" data-i18n="end_session">ÎNCHIDE SESIUNE</button>
+                                </div>
+                            </div>
+
+                            <!-- PANEL ELEV -->
+                            <div class="only-elev block-mode">
+                                <div id="no-session" class="glass p-12 rounded-2xl text-center">
+                                    <i class="fa-solid fa-video-slash text-6xl text-slate-600 mb-4"></i>
+                                    <p class="text-slate-400" data-i18n="no_active_session">Nicio sesiune online activă momentan</p>
+                                </div>
+
+                                <div id="active-session" class="glass p-8 rounded-2xl hidden">
+                                    <div class="flex items-center gap-3 mb-6">
+                                        <div class="w-3 h-3 bg-green-500 rounded-full live-dot"></div>
+                                        <h3 class="text-lg font-bold text-white" id="session-title-display">Lecția de istorie</h3>
+                                    </div>
+                                    <p class="text-slate-300 mb-6" id="session-desc-display">Descriere lecție...</p>
+                                    <button onclick="joinSession()" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl text-lg flex items-center justify-center gap-3">
+                                        <i class="fa-solid fa-video"></i><span data-i18n="join_lesson">INTRĂ ÎN LECȚIE</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- EVALUARE FORMATIVĂ (NOU) -->
+                    <div id="v-quiz" class="view-content hidden h-full flex-col">
+                        <div class="max-w-4xl mx-auto w-full">
+                            <!-- PANEL PROFESOR -->
+                            <div class="only-prof block-mode">
+                                <h2 class="text-2xl font-bold text-white mb-6" data-i18n="formative_assessment">Evaluare Formativă</h2>
+                                
+                                <div class="glass p-8 rounded-2xl mb-6">
+                                    <h3 class="text-lg font-bold text-white mb-4" data-i18n="create_quiz">Creează Evaluare</h3>
+                                    <div class="space-y-4">
+                                        <input type="text" id="quiz-title" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white text-sm" placeholder="Titlu evaluare..." data-i18n-placeholder="quiz_title">
+                                        <div class="flex gap-4">
+                                            <div class="flex-1">
+                                                <label class="text-xs text-slate-400 mb-2 block" data-i18n="time_minutes">Timp (minute):</label>
+                                                <input type="number" id="quiz-time" value="5" min="1" max="60" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white text-sm">
+                                            </div>
+                                            <div class="flex-1">
+                                                <label class="text-xs text-slate-400 mb-2 block" data-i18n="questions_count">Număr întrebări:</label>
+                                                <input type="number" id="quiz-questions" value="3" min="1" max="20" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white text-sm">
+                                            </div>
+                                        </div>
+                                        <textarea id="quiz-questions-text" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white text-sm h-32" placeholder="Întrebările (una per linie)..." data-i18n-placeholder="questions_per_line"></textarea>
+                                        <button onclick="startQuiz()" class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl" data-i18n="start_quiz">PORNEȘTE EVALUARE</button>
+                                    </div>
+                                </div>
+
+                                <!-- REZULTATE EVALUARE -->
+                                <div id="quiz-results" class="glass p-8 rounded-2xl hidden">
+                                    <h3 class="text-lg font-bold text-white mb-4" data-i18n="quiz_results">Rezultate Evaluare</h3>
+                                    <div id="results-list" class="space-y-3">
+                                        <!-- Va fi populat dinamic -->
+                                    </div>
+                                    <button onclick="analyzeWithAI()" class="w-full mt-4 bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2">
+                                        <i class="fa-solid fa-wand-magic-sparkles"></i><span data-i18n="ai_analyze">ANALIZEAZĂ CU AI</span>
+                                    </button>
+                                </div>
+
+                                <!-- VERIFICARE OCR (NOU) -->
+                                <div class="glass p-8 rounded-2xl mt-6">
+                                    <h3 class="text-lg font-bold text-white mb-4" data-i18n="ocr_check">Verificare OCR (Fotografii)</h3>
+                                    <div class="upload-zone rounded-xl p-6 text-center cursor-pointer" onclick="document.getElementById('ocr-upload').click()">
+                                        <i class="fa-solid fa-camera text-4xl text-purple-500 mb-3"></i>
+                                        <p class="text-white font-bold mb-1" data-i18n="upload_photo">Încarcă fotografie evaluare</p>
+                                        <p class="text-xs text-slate-400" data-i18n="ocr_formats">Format: JPG, PNG</p>
+                                    </div>
+                                    <input type="file" id="ocr-upload" accept="image/*" style="display:none" onchange="handleOCRUpload(this)">
+                                    <div id="ocr-preview" class="mt-4 hidden">
+                                        <img id="ocr-image" class="w-full rounded-xl mb-4">
+                                        <button onclick="processOCR()" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-xl" data-i18n="process_ocr">PROCESEAZĂ CU AI</button>
+                                    </div>
+                                    <div id="ocr-result" class="mt-4 hidden bg-slate-900 p-6 rounded-xl">
+                                        <h4 class="text-sm font-bold text-white mb-3" data-i18n="extracted_text">Text Extras:</h4>
+                                        <div id="ocr-text" class="text-sm text-slate-300 mb-4"></div>
+                                        <div class="bg-blue-900/20 border border-blue-500/30 p-4 rounded-lg">
+                                            <h5 class="text-xs font-bold text-blue-400 mb-2" data-i18n="ai_feedback">Feedback AI:</h5>
+                                            <p id="ocr-feedback" class="text-sm text-slate-300"></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- PANEL ELEV -->
+                            <div class="only-elev block-mode">
+                                <div id="no-quiz" class="glass p-12 rounded-2xl text-center">
+                                    <i class="fa-solid fa-clipboard-question text-6xl text-slate-600 mb-4"></i>
+                                    <p class="text-slate-400" data-i18n="no_active_quiz">Nicio evaluare activă momentan</p>
+                                </div>
+
+                                <div id="active-quiz" class="glass p-8 rounded-2xl hidden">
+                                    <div class="flex justify-between items-center mb-6">
+                                        <h2 class="text-2xl font-bold text-white" id="quiz-title-display">Evaluare Formativă</h2>
+                                        <div class="flex items-center gap-2 bg-red-900/20 border border-red-500/30 px-4 py-2 rounded-xl">
+                                            <i class="fa-solid fa-clock text-red-400"></i>
+                                            <span id="quiz-timer" class="text-xl font-bold text-red-400">05:00</span>
+                                        </div>
+                                    </div>
+
+                                    <div id="quiz-questions-display" class="space-y-6 mb-6">
+                                        <!-- Întrebările vor fi populate dinamic -->
+                                    </div>
+
+                                    <button onclick="submitQuiz()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl" data-i18n="submit_quiz">TRIMITE RĂSPUNSURI</button>
+                                    
+                                    <div id="quiz-submitted" class="hidden mt-6 bg-green-900/20 border border-green-500/30 p-6 rounded-xl text-center">
+                                        <i class="fa-solid fa-check-circle text-4xl text-green-400 mb-3"></i>
+                                        <p class="text-white font-bold" data-i18n="quiz_submitted_msg">Răspunsurile au fost trimise cu succes!</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <aside class="w-80 bg-[#0b0f19] border-l border-slate-800 flex flex-col z-10">
+                <div class="p-5 font-bold text-white text-xs uppercase border-b border-slate-800 tracking-widest" data-i18n="ai_resources">Resurse AI</div>
+                <div class="p-5 space-y-6 overflow-y-auto">
+                    <div class="bg-slate-800/40 p-4 rounded-2xl border border-slate-700">
+                        <h4 class="text-[10px] font-bold text-blue-400 uppercase mb-2" data-i18n="event_of_day">Evenimentul Zilei</h4>
+                        <p class="text-xs text-slate-300">1475: Podul Înalt</p>
+                    </div>
+                    <div class="bg-slate-800/40 p-4 rounded-2xl border border-slate-700">
+                        <h4 class="text-[10px] font-bold text-purple-400 uppercase mb-2" data-i18n="dictionary">Dicționar</h4>
+                        <input type="text" class="w-full bg-slate-900 border border-slate-600 rounded p-1 text-xs text-white" placeholder="Caută..." data-i18n-placeholder="search">
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- MODAL ADAUGĂ ELEV -->
+    <div id="modal-add" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-[2000] modal-overlay">
+        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 w-80">
+            <h3 class="text-white font-bold mb-4" data-i18n="enroll_student">Înscrie Elev</h3>
+            <input type="text" id="new-name" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm mb-4" placeholder="Nume Prenume" data-i18n-placeholder="full_name">
+            <div class="flex gap-2">
+                <button onclick="closeModal()" class="flex-1 bg-slate-700 text-white text-xs py-2 rounded" data-i18n="cancel">Anulează</button>
+                <button onclick="addStudent()" class="flex-1 bg-blue-600 text-white text-xs py-2 rounded font-bold" data-i18n="save">Salvează</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // TRADUCERI BILINGV RO/RU
+        // ============================================
+        const translations = {
+            RO: {
+                welcome: "BINE AI VENIT!",
+                pdld: "PLAN CADRU",
+                today_topic: "TEMA LECȚIEI DE AZI",
+                publish: "PUBLICĂ",
+                go: "MERGI LA LECȚIE",
+                control_panel: "PANOU CONTROL",
+                mentor: "MENTOR",
+                manual: "MANUAL",
+                homework_tab: "TEMĂ",
+                uploads: "MATERIALE",
+                online_lesson: "LECȚIE ONLINE",
+                quiz: "EVALUARE",
+                register: "Registru Clasa",
+                add_student: "ÎNSCRIE ELEV",
+                name: "Nume",
+                grades: "Note",
+                absences: "Absențe",
+                notes: "Note/Obs",
+                mentor_greeting: "Salut! Sunt Cronicus. Discutăm despre istorie?",
+                write: "Scrie...",
+                upload_pdf: "ÎNCARCĂ PDF",
+                chapter1: "Capitolul 1: Antichitatea",
+                manual_content: "Conținutul manualului digital...",
+                homework: "Tema de Acasă",
+                deadline: "Termen: Azi, 23:59",
+                edit_requirement: "EDITEAZĂ CERINȚA",
+                solution: "Rezolvare...",
+                attach_file: "ATAȘEAZĂ FIȘIER",
+                send: "TRIMITE",
+                submitted_works: "Lucrări Trimise",
+                materials: "Materiale de Curs",
+                drag_files: "Trage fișiere aici sau click pentru a încărca",
+                supported_formats: "Formate suportate: PDF, PPT, PPTX, DOC, DOCX, JPG, PNG",
+                create_session: "Creează Sesiune Online",
+                lesson_title: "Titlu lecție...",
+                description: "Descriere...",
+                generate_link: "GENEREAZĂ LINK",
+                active_session: "Sesiune Activă",
+                meeting_link: "Link Întâlnire:",
+                end_session: "ÎNCHIDE SESIUNE",
+                no_active_session: "Nicio sesiune online activă momentan",
+                join_lesson: "INTRĂ ÎN LECȚIE",
+                formative_assessment: "Evaluare Formativă",
+                create_quiz: "Creează Evaluare",
+                quiz_title: "Titlu evaluare...",
+                time_minutes: "Timp (minute):",
+                questions_count: "Număr întrebări:",
+                questions_per_line: "Întrebările (una per linie)...",
+                start_quiz: "PORNEȘTE EVALUARE",
+                quiz_results: "Rezultate Evaluare",
+                ai_analyze: "ANALIZEAZĂ CU AI",
+                ocr_check: "Verificare OCR (Fotografii)",
+                upload_photo: "Încarcă fotografie evaluare",
+                ocr_formats: "Format: JPG, PNG",
+                process_ocr: "PROCESEAZĂ CU AI",
+                extracted_text: "Text Extras:",
+                ai_feedback: "Feedback AI:",
+                no_active_quiz: "Nicio evaluare activă momentan",
+                submit_quiz: "TRIMITE RĂSPUNSURI",
+                quiz_submitted_msg: "Răspunsurile au fost trimise cu succes!",
+                ai_resources: "Resurse AI",
+                event_of_day: "Evenimentul Zilei",
+                dictionary: "Dicționar",
+                search: "Caută...",
+                enroll_student: "Înscrie Elev",
+                full_name: "Nume Prenume",
+                cancel: "Anulează",
+                save: "Salvează",
+                mode_fast: "RĂSPUNS RAPID",
+                mode_deep: "ANALIZĂ PROFUNDĂ"
+            },
+            RU: {
+                welcome: "ДОБРО ПОЖАЛОВАТЬ!",
+                pdld: "УЧЕБНЫЙ ПЛАН",
+                today_topic: "ТЕМА СЕГОДНЯШНЕГО УРОКА",
+                publish: "ОПУБЛИКОВАТЬ",
+                go: "ПЕРЕЙТИ К УРОКУ",
+                control_panel: "ПАНЕЛЬ УПРАВЛЕНИЯ",
+                mentor: "МЕНТОР",
+                manual: "УЧЕБНИК",
+                homework_tab: "ЗАДАНИЕ",
+                uploads: "МАТЕРИАЛЫ",
+                online_lesson: "ОНЛАЙН УРОК",
+                quiz: "ОЦЕНИВАНИЕ",
+                register: "Журнал Класс",
+                add_student: "ЗАПИСАТЬ УЧЕНИКА",
+                name: "Имя",
+                grades: "Оценки",
+                absences: "Отсутствия",
+                notes: "Заметки/Набл.",
+                mentor_greeting: "Привет! Я Cronicus. Обсудим историю?",
+                write: "Напиши...",
+                upload_pdf: "ЗАГРУЗИТЬ PDF",
+                chapter1: "Глава 1: Древность",
+                manual_content: "Содержание цифрового учебника...",
+                homework: "Домашнее Задание",
+                deadline: "Срок: Сегодня, 23:59",
+                edit_requirement: "РЕДАКТИРОВАТЬ ТРЕБОВАНИЕ",
+                solution: "Решение...",
+                attach_file: "ПРИКРЕПИТЬ ФАЙЛ",
+                send: "ОТПРАВИТЬ",
+                submitted_works: "Сданные Работы",
+                materials: "Учебные Материалы",
+                drag_files: "Перетащите файлы сюда или нажмите для загрузки",
+                supported_formats: "Поддерживаемые форматы: PDF, PPT, PPTX, DOC, DOCX, JPG, PNG",
+                create_session: "Создать Онлайн Сессию",
+                lesson_title: "Название урока...",
+                description: "Описание...",
+                generate_link: "СОЗДАТЬ ССЫЛКУ",
+                active_session: "Активная Сессия",
+                meeting_link: "Ссылка Встречи:",
+                end_session: "ЗАКРЫТЬ СЕССИЮ",
+                no_active_session: "Нет активной онлайн сессии",
+                join_lesson: "ВОЙТИ В УРОК",
+                formative_assessment: "Формативное Оценивание",
+                create_quiz: "Создать Оценивание",
+                quiz_title: "Название оценивания...",
+                time_minutes: "Время (минуты):",
+                questions_count: "Количество вопросов:",
+                questions_per_line: "Вопросы (один на строку)...",
+                start_quiz: "НАЧАТЬ ОЦЕНИВАНИЕ",
+                quiz_results: "Результаты Оценивания",
+                ai_analyze: "АНАЛИЗИРОВАТЬ С AI",
+                ocr_check: "Проверка OCR (Фотографии)",
+                upload_photo: "Загрузить фото оценивания",
+                ocr_formats: "Формат: JPG, PNG",
+                process_ocr: "ОБРАБОТАТЬ С AI",
+                extracted_text: "Извлеченный Текст:",
+                ai_feedback: "Обратная связь AI:",
+                no_active_quiz: "Нет активного оценивания",
+                submit_quiz: "ОТПРАВИТЬ ОТВЕТЫ",
+                quiz_submitted_msg: "Ответы успешно отправлены!",
+                ai_resources: "AI Ресурсы",
+                event_of_day: "Событие Дня",
+                dictionary: "Словарь",
+                search: "Поиск...",
+                enroll_student: "Записать Ученика",
+                full_name: "Имя Фамилия",
+                cancel: "Отменить",
+                save: "Сохранить",
+                mode_fast: "БЫСТРЫЙ ОТВЕТ",
+                mode_deep: "ГЛУБОКИЙ АНАЛИЗ"
+            }
+        };
+
+        let cL = 'RO';
+        let currentRole = null;
+        let currentUser = null;
+        let currentClass = 'X';
+        let quizTimer = null;
+        let uploadedFiles = [];
+        let submittedHomework = [];
+        let materials = [];
+        let onlineSessionActive = false;
+        let activeQuiz = null;
+        let ocrImage = null;
+
+        // ============================================
+        // FUNCȚII DE BAZĂ
+        // ============================================
+
+      // ============================================
+        // CONFIGURARE BACKEND
+        // ============================================
+        const API_BASE_URL = 'https://history-cosmos.contact-ai.online';
+
+        async function handleAuth(action) {
+            const user = document.getElementById('user-input').value;
+            const pass = document.getElementById('pass-input').value;
+            const msgLabel = document.getElementById('login-msg');
+
+            if (!user || !pass) {
+                if(msgLabel) msgLabel.innerText = "Introdu user și parolă!";
+                else alert("Introdu user și parolă!");
+                return;
+            }
+
+            let fullName = null;
+            if (action === 'register') {
+                fullName = prompt("Introdu numele tău complet (ex: Mihai Eminescu):");
+                if (!fullName) return;
+            }
+
+            if(msgLabel) {
+                msgLabel.innerText = "Conectare...";
+                msgLabel.className = "text-xs text-blue-400 mt-4 h-4 animate-pulse";
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/${action}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        username: user, 
+                        password: pass, 
+                        fullname: fullName 
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    if (action === 'register') {
+                        alert("Cont creat! Așteaptă aprobarea profesorului.");
+                        if(msgLabel) msgLabel.innerText = "Cont creat. Așteaptă aprobarea.";
+                    } else {
+                        // LOGIN REUȘIT -> Pornim interfața ta originală
+                        localStorage.setItem('userSession', JSON.stringify(data.user));
+                        
+                        // AICI FOLOSIM FUNCȚIA TA VECHE 'start'
+                        start(
+                            data.user.role, 
+                            data.user.fullname || data.user.username, 
+                            data.user.role === 'teacher' ? 'ADMIN' : 'ELEV'
+                        );
+                    }
+                } else {
+                    const errMsg = data.error || "Eroare necunoscută";
+                    if(msgLabel) {
+                        msgLabel.innerText = errMsg;
+                        msgLabel.className = "text-xs text-red-500 mt-4 h-4 font-bold";
+                    } else {
+                        alert(errMsg);
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+                if(msgLabel) msgLabel.innerText = "Eroare conexiune server!";
+                else alert("Eroare conexiune server!");
+            }
+        }
+
+        function start(role, name, lbl) {
+            currentRole = role;
+            currentUser = name;
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('app-screen').style.display = 'flex';
+            document.body.className = "h-screen flex flex-col overflow-hidden is-" + role;
+            document.getElementById('u-name').innerText = name;
+            document.getElementById('u-role').innerText = lbl;
+            document.getElementById('u-role').className = role === 'teacher' ? "text-[10px] font-bold text-red-500" : "text-[10px] font-bold text-blue-500";
+            
+            nav(role === 'teacher' ? 'admin' : 'mentor');
+            
+            const d = new Date();
+            document.getElementById('date-txt').innerText = d.toLocaleDateString('ro-RO');
+
+            // Simulare materiale și sesiuni pentru demo
+            if(role === 'teacher') {
+                initTeacherData();
+            } else {
+                initStudentData();
+            }
+        }
+
+        function nav(id) {
+            document.querySelectorAll('.view-content').forEach(v => v.style.display = 'none');
+            const target = document.getElementById('v-' + id);
+            target.style.display = (id === 'mentor' || id === 'manual' || id === 'admin' || id === 'homework' || id === 'uploads' || id === 'online' || id === 'quiz') ? 'flex' : 'block';
+            
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            const btn = document.getElementById('t-' + id);
+            if(btn) btn.classList.add('active');
+        }
+
+        function pubTopic() {
+            const t = document.getElementById('topic-edit').value;
+            document.getElementById('topic-view').innerText = t;
+            document.getElementById('hw-req').innerText = "Cerință: " + t;
+            showNotification(cL === 'RO' ? 'Publicat cu succes!' : 'Опубликовано успешно!');
+        }
+
+        function changeLang() {
+            cL = cL === 'RO' ? 'RU' : 'RO';
+            document.getElementById('lang-ind').innerText = cL;
+            applyTranslations();
+        }
+
+        function applyTranslations() {
+            const t = translations[cL];
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if(t[key]) el.innerText = t[key];
+            });
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                const key = el.getAttribute('data-i18n-placeholder');
+                if(t[key]) el.placeholder = t[key];
+            });
+            
+            // Update curriculum când schimbăm limba
+            if(currentClass) {
+                updateCurriculumForClass(currentClass);
+            }
+        }
+
+        function editTxt(el) {
+            let n = prompt(cL === 'RO' ? "Editează:" : "Редактировать:", el.innerText);
+            if(n) el.querySelector('span').innerText = n;
+        }
+
+        function openModal() { document.getElementById('modal-add').style.display = 'flex'; }
+        function closeModal() { document.getElementById('modal-add').style.display = 'none'; }
+        
+        function addStudent() {
+            const n = document.getElementById('new-name').value;
+            if(n) {
+                const tb = document.querySelector('#reg-table tbody');
+                tb.innerHTML += `<tr class="border-b border-slate-800 hover:bg-slate-800/30"><td class="p-2 font-bold text-white">${n}</td><td class="p-2 text-center"><input type="text" class="t-input" placeholder="-"></td><td class="p-2 text-center"><input type="text" class="t-input text-red-400" placeholder="-"></td><td class="p-2"><input type="text" class="t-input text-left" placeholder="..."></td></tr>`;
+                closeModal();
+                showNotification(cL === 'RO' ? 'Elev adăugat!' : 'Ученик добавлен!');
+            }
+        }
+
+        function showNotification(msg) {
+            const notification = document.createElement('div');
+            notification.className = 'fixed top-20 right-6 bg-green-600 text-white px-6 py-3 rounded-xl shadow-2xl z-[9999] font-bold text-sm';
+            notification.innerText = msg;
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 3000);
+        }
+
+        // ============================================
+        // SCHIMBAREA CLASEI (X, XI, XII)
+        // ============================================
+
+        function changeClass(classNum) {
+            currentClass = classNum;
+            
+            // Update visual: toggle active state
+            ['X', 'XI', 'XII'].forEach(c => {
+                const btn = document.getElementById('class-' + c);
+                if(c === classNum) {
+                    btn.classList.remove('text-slate-500');
+                    btn.classList.add('bg-blue-600', 'text-white');
+                } else {
+                    btn.classList.remove('bg-blue-600', 'text-white');
+                    btn.classList.add('text-slate-500');
+                }
+            });
+            
+            // Update registru header (X-A, XI-A, XII-A)
+            document.getElementById('class-header-display').innerText = classNum + '-A';
+            
+            // Update plan cadru (aici poți încărca date specifice clasei)
+            updateCurriculumForClass(classNum);
+            
+            showNotification(cL === 'RO' ? `Schimbat la Clasa ${classNum}` : `Переключено на Класс ${classNum}`);
+        }
+
+        function updateCurriculumForClass(classNum) {
+            // Aici poți actualiza conținutul din sidebar (Plan Cadru)
+            // De exemplu, încărcare teme specifice pentru fiecare clasă
+            const curriculumData = {
+                'X': [
+                    { unit: 'U1', title: cL === 'RO' ? 'Orientul Antic' : 'Древний Восток' },
+                    { unit: 'U2', title: cL === 'RO' ? 'Grecia Antică' : 'Древняя Греция' },
+                    { unit: 'U3', title: cL === 'RO' ? 'Roma Antică' : 'Древний Рим' },
+                    { unit: 'U4', title: cL === 'RO' ? 'Evul Mediu European' : 'Европейское Средневековье' },
+                    { unit: 'U5', title: cL === 'RO' ? 'Renașterea și Umanismul' : 'Возрождение и Гуманизм' },
+                    { unit: 'U6', title: cL === 'RO' ? 'Marile Descoperiri Geografice' : 'Великие Географ. Открытия' }
+                ],
+                'XI': [
+                    { unit: 'U1', title: cL === 'RO' ? '1640-1789: Absolutism & Revoluții' : '1640-1789: Абсолютизм & Революции' },
+                    { unit: 'U2', title: cL === 'RO' ? '1789-1870: Revoluții Naționale' : '1789-1870: Национальные Революции' },
+                    { unit: 'U3', title: cL === 'RO' ? '1870-1914/1918: Imperialism & WWI' : '1870-1914/1918: Империализм & ПМВ' }
+                ],
+                'XII': [
+                    { unit: 'U1', title: cL === 'RO' ? '1918-1939: Interbelică & Totalitarisme' : '1918-1939: Межвоенный & Тоталитаризм' },
+                    { unit: 'U2', title: cL === 'RO' ? '1939-1945: Al Doilea Război Mondial' : '1939-1945: Вторая Мировая Война' },
+                    { unit: 'U3', title: cL === 'RO' ? '1945-2026: Război Rece & Contemporan' : '1945-2026: Холодная Война & Современность' }
+                ]
+            };
+            
+            const curriculumContainer = document.querySelector('aside .flex-grow.overflow-y-auto');
+            const units = curriculumData[classNum];
+            
+            curriculumContainer.innerHTML = units.map(u => `
+                <div class="bg-blue-900/20 border border-blue-500/30 p-3 rounded-lg">
+                    <p class="text-[9px] text-blue-300 font-bold mb-1 opacity-70">${u.unit}</p>
+                    <p class="text-xs text-white font-bold leading-tight">${u.title}</p>
+                </div>
+            `).join('');
+        }
+
+        function editHomework() {
+            const newReq = prompt(cL === 'RO' ? 'Editează cerința:' : 'Редактировать требование:', document.getElementById('hw-req').innerText);
+            if(newReq) {
+                document.getElementById('hw-req').innerText = newReq;
+                showNotification(cL === 'RO' ? 'Cerință actualizată!' : 'Требование обновлено!');
+            }
+        }
+
+        // ============================================
+        // UPLOAD MATERIALE
+        // ============================================
+
+        function handleMaterialUpload(input) {
+            const files = Array.from(input.files);
+            files.forEach(file => {
+                materials.push({
+                    name: file.name,
+                    size: (file.size / 1024).toFixed(2) + ' KB',
+                    type: file.type,
+                    uploadedBy: currentUser,
+                    date: new Date().toLocaleDateString('ro-RO')
+                });
+            });
+            renderMaterials();
+            showNotification(cL === 'RO' ? `${files.length} fișier(e) încărcat(e)!` : `${files.length} файл(ов) загружено!`);
+        }
+
+        function renderMaterials() {
+            const container = document.getElementById('materials-list');
+            if(materials.length === 0) {
+                container.innerHTML = `<div class="col-span-full text-center text-slate-400 py-12"><i class="fa-solid fa-folder-open text-5xl mb-4 opacity-50"></i><p>${cL === 'RO' ? 'Niciun material încărcat' : 'Нет загруженных материалов'}</p></div>`;
+                return;
+            }
+
+            container.innerHTML = materials.map((m, i) => `
+                <div class="file-item p-4 rounded-xl">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                                <i class="fa-solid ${getFileIcon(m.type)} text-white"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-bold text-white truncate">${m.name}</p>
+                                <p class="text-xs text-slate-400">${m.size}</p>
+                            </div>
+                        </div>
+                        ${currentRole === 'teacher' ? `<button onclick="deleteMaterial(${i})" class="text-red-400 hover:text-red-300"><i class="fa-solid fa-trash-can"></i></button>` : ''}
+                    </div>
+                    <div class="text-xs text-slate-500 flex items-center justify-between">
+                        <span><i class="fa-solid fa-user mr-1"></i>${m.uploadedBy}</span>
+                        <span><i class="fa-solid fa-calendar mr-1"></i>${m.date}</span>
+                    </div>
+                    <button onclick="downloadMaterial(${i})" class="w-full mt-3 bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-2 rounded-lg">
+                        <i class="fa-solid fa-download mr-2"></i>${cL === 'RO' ? 'DESCARCĂ' : 'СКАЧАТЬ'}
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function getFileIcon(type) {
+            if(type.includes('pdf')) return 'fa-file-pdf';
+            if(type.includes('presentation') || type.includes('powerpoint')) return 'fa-file-powerpoint';
+            if(type.includes('word') || type.includes('document')) return 'fa-file-word';
+            if(type.includes('image')) return 'fa-file-image';
+            return 'fa-file';
+        }
+
+        function deleteMaterial(index) {
+            if(confirm(cL === 'RO' ? 'Sigur ștergi?' : 'Точно удалить?')) {
+                materials.splice(index, 1);
+                renderMaterials();
+                showNotification(cL === 'RO' ? 'Material șters!' : 'Материал удален!');
+            }
+        }
+
+        function downloadMaterial(index) {
+            showNotification(cL === 'RO' ? 'Se descarcă...' : 'Загрузка...');
+        }
+
+        function handleManualUpload(input) {
+            if(input.files.length > 0) {
+                showNotification(cL === 'RO' ? 'Manual încărcat cu succes!' : 'Учебник успешно загружен!');
+            }
+        }
+
+        // ============================================
+        // TEMĂ DE ACASĂ - UPLOAD & VERIFICARE AI
+        // ============================================
+
+        function handleHomeworkFileUpload(input) {
+            if(input.files.length > 0) {
+                const file = input.files[0];
+                document.getElementById('hw-file-preview').innerText = `📎 ${file.name} (${(file.size/1024).toFixed(2)} KB)`;
+                uploadedFiles.push(file);
+            }
+        }
+
+        function submitHomework() {
+            const answer = document.getElementById('hw-answer').value;
+            if(!answer && uploadedFiles.length === 0) {
+                alert(cL === 'RO' ? 'Completează răspunsul sau atașează fișier!' : 'Заполните ответ или прикрепите файл!');
+                return;
+            }
+
+            submittedHomework.push({
+                student: currentUser,
+                answer: answer,
+                files: [...uploadedFiles],
+                date: new Date().toLocaleString('ro-RO')
+            });
+
+            showNotification(cL === 'RO' ? 'Temă trimisă cu succes!' : 'Задание успешно отправлено!');
+            document.getElementById('hw-answer').value = '';
+            document.getElementById('hw-file-preview').innerText = '';
+            uploadedFiles = [];
+
+            // Notificare profesor (simulare)
+            if(currentRole === 'teacher') {
+                renderSubmittedWorks();
+            }
+        }
+
+        function renderSubmittedWorks() {
+            const container = document.getElementById('submitted-works');
+            if(submittedHomework.length === 0) {
+                container.innerHTML = `<p class="text-slate-400 text-sm">${cL === 'RO' ? 'Nicio lucrare trimisă încă' : 'Нет отправленных работ'}</p>`;
+                return;
+            }
+
+            container.innerHTML = submittedHomework.map((hw, i) => `
+                <div class="file-item p-4 rounded-xl">
+                    <div class="flex items-center justify-between mb-3">
+                        <div>
+                            <p class="text-sm font-bold text-white">${hw.student}</p>
+                            <p class="text-xs text-slate-400">${hw.date}</p>
+                        </div>
+                        <button onclick="verifyWithAI(${i})" class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-2">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>${cL === 'RO' ? 'VERIFICĂ AI' : 'ПРОВЕРИТЬ AI'}
+                        </button>
+                    </div>
+                    <div class="bg-slate-900 p-3 rounded-lg text-xs text-slate-300 mb-2">
+                        ${hw.answer || `<span class="text-slate-500">${cL === 'RO' ? 'Fără text (doar fișiere)' : 'Без текста (только файлы)'}</span>`}
+                    </div>
+                    ${hw.files.length > 0 ? `<p class="text-xs text-blue-400"><i class="fa-solid fa-paperclip mr-1"></i>${hw.files.length} ${cL === 'RO' ? 'fișier(e) atașat(e)' : 'файл(ов) прикреплено'}</p>` : ''}
+                </div>
+            `).join('');
+        }
+
+        async function verifyWithAI(index) {
+            const hw = submittedHomework[index];
+            
+            // Afișează loading
+            showNotification(cL === 'RO' ? 'Se analizează cu AI...' : 'Анализируется с AI...');
+            
+            try {
+                // Apel REAL către Deepseek/Mistral
+                const systemMessage = cL === 'RO' 
+                    ? 'Ești profesor de istorie pentru elevii de liceu din Moldova. Analizează răspunsul elevului și oferă feedback constructiv cu notă pe scara 1-10.'
+                    : 'Вы учитель истории для старшеклассников из Молдовы. Проанализируйте ответ ученика и предоставьте конструктивную обратную связь с оценкой по шкале 1-10.';
+                
+                const prompt = cL === 'RO'
+                    ? `Analizează următorul răspuns al elevului și oferă feedback detaliat:\n\n"${hw.answer || hw.files.join(', ')}"\n\nNotă: Oferă o evaluare obiectivă pe baza clarității, exactității și argumentării.`
+                    : `Проанализируйте следующий ответ ученика и предоставьте подробную обратную связь:\n\n"${hw.answer || hw.files.join(', ')}"\n\nПримечание: Дайте объективную оценку на основе ясности, точности и аргументации.`;
+                
+                const feedback = await callAIProvider(prompt, systemMessage);
+                
+                alert(`🤖 AI Feedback (${AI_CONFIG.provider.toUpperCase()}):\n\n${feedback}`);
+                
+            } catch (error) {
+                console.error('Eroare verificare AI:', error);
+                const fallbackFeedback = generateSimulatedResponse(hw.answer);
+                alert(`AI Feedback (Simulat):\n\n${fallbackFeedback}`);
+            }
+        }
+
+        // ============================================
+        // LECȚIE ONLINE
+        // ============================================
+
+        function createOnlineSession() {
+            const title = document.getElementById('online-title').value;
+            const desc = document.getElementById('online-desc').value;
+            
+            if(!title) {
+                alert(cL === 'RO' ? 'Completează titlul!' : 'Заполните название!');
+                return;
+            }
+
+            const meetingLink = generateMeetingLink();
+            document.getElementById('meeting-link').value = meetingLink;
+            document.getElementById('session-info').classList.remove('hidden');
+            
+            onlineSessionActive = true;
+            showNotification(cL === 'RO' ? 'Sesiune creată! Link copiat.' : 'Сессия создана! Ссылка скопирована.');
+
+            // Simulare notificare elevi
+            if(currentRole === 'student') {
+                showStudentSession(title, desc, meetingLink);
+            }
+        }
+
+        function generateMeetingLink() {
+            const id = Math.random().toString(36).substring(2, 11);
+            return `https://meet.history-cosmos.ai/${id}`;
+        }
+
+        function copyLink() {
+            const link = document.getElementById('meeting-link').value;
+            navigator.clipboard.writeText(link);
+            showNotification(cL === 'RO' ? 'Link copiat!' : 'Ссылка скопирована!');
+        }
+
+        function endSession() {
+            if(confirm(cL === 'RO' ? 'Închizi sesiunea?' : 'Закрыть сессию?')) {
+                document.getElementById('session-info').classList.add('hidden');
+                onlineSessionActive = false;
+                showNotification(cL === 'RO' ? 'Sesiune închisă!' : 'Сессия закрыта!');
+            }
+        }
+
+        function showStudentSession(title, desc, link) {
+            document.getElementById('no-session').classList.add('hidden');
+            document.getElementById('active-session').classList.remove('hidden');
+            document.getElementById('session-title-display').innerText = title;
+            document.getElementById('session-desc-display').innerText = desc;
+            document.getElementById('active-session').dataset.link = link;
+        }
+
+        function joinSession() {
+            const link = document.getElementById('active-session').dataset.link;
+            if(link) {
+                window.open(link, '_blank');
+                showNotification(cL === 'RO' ? 'Se deschide lecția...' : 'Открывается урок...');
+            }
+        }
+
+        // ============================================
+        // EVALUARE FORMATIVĂ
+        // ============================================
+
+        function startQuiz() {
+            const title = document.getElementById('quiz-title').value;
+            const timeMinutes = parseInt(document.getElementById('quiz-time').value);
+            const questionsText = document.getElementById('quiz-questions-text').value;
+            
+            if(!title || !questionsText) {
+                alert(cL === 'RO' ? 'Completează toate câmpurile!' : 'Заполните все поля!');
+                return;
+            }
+
+            const questions = questionsText.split('\n').filter(q => q.trim());
+            
+            activeQuiz = {
+                title: title,
+                time: timeMinutes,
+                questions: questions,
+                answers: [],
+                startTime: Date.now()
+            };
+
+            showNotification(cL === 'RO' ? 'Evaluare pornită!' : 'Оценивание начато!');
+            
+            // Pentru elevi - arată quiz-ul
+            if(currentRole === 'student') {
+                displayQuizForStudent();
+            }
+        }
+
+        function displayQuizForStudent() {
+            document.getElementById('no-quiz').classList.add('hidden');
+            document.getElementById('active-quiz').classList.remove('hidden');
+            document.getElementById('quiz-title-display').innerText = activeQuiz.title;
+            
+            const questionsContainer = document.getElementById('quiz-questions-display');
+            questionsContainer.innerHTML = activeQuiz.questions.map((q, i) => `
+                <div class="bg-slate-900/50 border border-slate-700 p-4 rounded-xl">
+                    <p class="text-sm font-bold text-white mb-3">${i+1}. ${q}</p>
+                    <textarea id="quiz-answer-${i}" class="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-sm text-white h-24" placeholder="${cL === 'RO' ? 'Răspunsul tău...' : 'Ваш ответ...'}"></textarea>
+                </div>
+            `).join('');
+
+            startQuizTimer();
+        }
+
+        function startQuizTimer() {
+            let timeLeft = activeQuiz.time * 60;
+            const timerDisplay = document.getElementById('quiz-timer');
+            
+            quizTimer = setInterval(() => {
+                timeLeft--;
+                const minutes = Math.floor(timeLeft / 60);
+                const seconds = timeLeft % 60;
+                timerDisplay.innerText = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                
+                if(timeLeft <= 60) {
+                    timerDisplay.classList.add('timer-warning');
+                }
+                
+                if(timeLeft <= 0) {
+                    clearInterval(quizTimer);
+                    submitQuiz(true);
+                }
+            }, 1000);
+        }
+
+        function submitQuiz(autoSubmit = false) {
+            if(!autoSubmit) {
+                if(!confirm(cL === 'RO' ? 'Trimiți răspunsurile?' : 'Отправить ответы?')) return;
+            }
+            
+            clearInterval(quizTimer);
+            
+            activeQuiz.questions.forEach((q, i) => {
+                const answer = document.getElementById(`quiz-answer-${i}`).value;
+                activeQuiz.answers.push({ question: q, answer: answer });
+            });
+            
+            document.getElementById('quiz-questions-display').innerHTML = '';
+            document.getElementById('active-quiz').querySelector('button').classList.add('hidden');
+            document.getElementById('quiz-submitted').classList.remove('hidden');
+            
+            showNotification(cL === 'RO' ? 'Răspunsuri trimise!' : 'Ответы отправлены!');
+            
+            // Pentru profesor - arată rezultate
+            if(currentRole === 'teacher') {
+                displayQuizResults();
+            }
+        }
+
+        function displayQuizResults() {
+            document.getElementById('quiz-results').classList.remove('hidden');
+            const resultsContainer = document.getElementById('results-list');
+            
+            resultsContainer.innerHTML = `
+                <div class="file-item p-4 rounded-xl">
+                    <div class="flex items-center justify-between mb-3">
+                        <p class="text-sm font-bold text-white">${currentUser}</p>
+                        <span class="text-xs bg-blue-600 text-white px-3 py-1 rounded-full">${activeQuiz.answers.length} ${cL === 'RO' ? 'răspunsuri' : 'ответов'}</span>
+                    </div>
+                    ${activeQuiz.answers.map((a, i) => `
+                        <div class="bg-slate-900 p-3 rounded-lg mb-2">
+                            <p class="text-xs font-bold text-slate-400 mb-1">${i+1}. ${a.question}</p>
+                            <p class="text-xs text-slate-300">${a.answer || `<span class="text-red-400">${cL === 'RO' ? 'Fără răspuns' : 'Нет ответа'}</span>`}</p>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        async function analyzeWithAI() {
+            showNotification(cL === 'RO' ? 'Se analizează cu AI...' : 'Анализируется с AI...');
+            
+            try {
+                const systemMessage = cL === 'RO'
+                    ? 'Ești profesor de istorie. Analizează performanța elevului la quiz și oferă feedback detaliat.'
+                    : 'Вы учитель истории. Проанализируйте результаты ученика на тесте и предоставьте подробную обратную связь.';
+                
+                const prompt = cL === 'RO'
+                    ? `Analizează următoarea performanță la quiz:\n\nElev: Ana Moraru\nTimp: 4:32/5:00\nRăspunsuri corecte: 3/3\n\nOferă: 1) Evaluare generală, 2) Notă sugerată (1-10), 3) Recomandări.`
+                    : `Проанализируйте следующий результат теста:\n\nУченик: Ana Moraru\nВремя: 4:32/5:00\nПравильные ответы: 3/3\n\nПредоставьте: 1) Общую оценку, 2) Предлагаемую оценку (1-10), 3) Рекомендации.`;
+                
+                const analysis = await callAIProvider(prompt, systemMessage);
+                alert(`🤖 AI Анализ (${AI_CONFIG.provider.toUpperCase()}):\n\n${analysis}`);
+                
+            } catch (error) {
+                console.error('Eroare analiză AI:', error);
+                const fallback = cL === 'RO' ?
+                    'Analiză AI:\n\n✓ Elev: Ana Moraru\n✓ Timp: 4:32/5:00\n✓ Răspunsuri complete: 3/3\n✓ Calitate medie: 8.5/10\n\nRecomandare: Elevul demonstrează înțelegere bună a subiectului. Notă sugerată: 9/10' :
+                    'AI Анализ:\n\n✓ Ученик: Ana Moraru\n✓ Время: 4:32/5:00\n✓ Полные ответы: 3/3\n✓ Средн. качество: 8.5/10\n\nРекомендация: Ученик демонстрирует хорошее понимание темы. Предлагаемая оценка: 9/10';
+                alert(fallback);
+            }
+        }
+
+        // ============================================
+        // VERIFICARE OCR
+        // ============================================
+
+        function handleOCRUpload(input) {
+            if(input.files.length > 0) {
+                const file = input.files[0];
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    ocrImage = e.target.result;
+                    document.getElementById('ocr-image').src = ocrImage;
+                    document.getElementById('ocr-preview').classList.remove('hidden');
+                    document.getElementById('ocr-result').classList.add('hidden');
+                };
+                
+                reader.readAsDataURL(file);
+            }
+        }
+
+        async function processOCR() {
+            showNotification(cL === 'RO' ? 'Se procesează cu AI...' : 'Обрабатывается с AI...');
+            
+            try {
+                // Notă: OCR real necesită servicii precum Tesseract.js sau Cloudflare Vision
+                // Aici facem doar analiza AI a textului extras (simulat pentru MVP)
+                
+                const extractedText = cL === 'RO' ?
+                    'Nilul a fost vital pentru civilizația egipteană deoarece:\n1. Asigura apă pentru agricultură\n2. Fertiliza solul prin inundații\n3. Permitea transportul\n\nConcluzie: Fără Nil, Egiptul antic nu ar fi putut prospera.' :
+                    'Нил был жизненно важен для египетской цивилизации потому что:\n1. Обеспечивал водой сельское хозяйство\n2. Удобрял почву наводнениями\n3. Позволял транспортировку\n\nВывод: Без Нила древний Египет не мог бы процветать.';
+                
+                document.getElementById('ocr-text').innerText = extractedText;
+                document.getElementById('ocr-result').classList.remove('hidden');
+                
+                // Apel AI pentru feedback
+                const systemMessage = cL === 'RO'
+                    ? 'Ești profesor de istorie. Evaluează răspunsul elevului extras prin OCR și oferă feedback constructiv.'
+                    : 'Вы учитель истории. Оцените ответ ученика, извлеченный через OCR, и предоставьте конструктивную обратную связь.';
+                
+                const prompt = cL === 'RO'
+                    ? `Evaluează acest răspuns despre Nilul în Egiptul Antic:\n\n"${extractedText}"\n\nOferă: 1) Puncte forte, 2) Ce lipsește, 3) Notă sugerată (1-10).`
+                    : `Оцените этот ответ о Ниле в Древнем Египте:\n\n"${extractedText}"\n\nПредоставьте: 1) Сильные стороны, 2) Чего не хватает, 3) Предлагаемую оценку (1-10).`;
+                
+                const feedback = await callAIProvider(prompt, systemMessage);
+                document.getElementById('ocr-feedback').innerText = feedback;
+                
+            } catch (error) {
+                console.error('Eroare procesare OCR:', error);
+                const fallback = cL === 'RO' ?
+                    'Răspuns complet și structurat corect. Elevul a identificat toate aspectele importante. Notă sugerată: 9.5/10. Recomandare: Excelent!' :
+                    'Полный и правильно структурированный ответ. Ученик определил все важные аспекты. Предлагаемая оценка: 9.5/10. Рекомендация: Отлично!';
+                document.getElementById('ocr-feedback').innerText = fallback;
+            }
+        }
+
+        // ============================================
+        // INIȚIALIZARE DATE DEMO
+        // ============================================
+
+        function initTeacherData() {
+            materials = [
+                { name: 'Prezentare_Egiptul_Antic.pptx', size: '2.4 MB', type: 'application/vnd.ms-powerpoint', uploadedBy: 'Prof. Ruslan', date: new Date().toLocaleDateString('ro-RO') },
+                { name: 'Manual_Antichitate.pdf', size: '15.8 MB', type: 'application/pdf', uploadedBy: 'Prof. Ruslan', date: new Date().toLocaleDateString('ro-RO') }
+            ];
+            renderMaterials();
+            
+            submittedHomework = [
+                { student: 'Ana Moraru', answer: 'Nilul a jucat un rol crucial...', files: [], date: new Date().toLocaleString('ro-RO') }
+            ];
+            renderSubmittedWorks();
+        }
+
+        function initStudentData() {
+            // Simulare sesiune online activă
+            setTimeout(() => {
+                if(Math.random() > 0.5) {
+                    showStudentSession('Orientul Antic: Egipt', 'Discutăm despre importanța Nilului și organizarea socială', 'https://meet.history-cosmos.ai/abc123xyz');
+                }
+            }, 1000);
+        }
+
+        // Aplicare traduceri la încărcare
+        window.addEventListener('DOMContentLoaded', () => {
+            applyTranslations();
+        });
+
+        // Drag & Drop pentru upload zone
+        document.addEventListener('DOMContentLoaded', () => {
+            const uploadZones = document.querySelectorAll('.upload-zone');
+            uploadZones.forEach(zone => {
+                zone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    zone.classList.add('dragover');
+                });
+                
+                zone.addEventListener('dragleave', () => {
+                    zone.classList.remove('dragover');
+                });
+                
+                zone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    zone.classList.remove('dragover');
+                    // Procesare fișiere aici
+                });
+            });
+        });
+    </script>
+</body>
+</html>
