@@ -1,150 +1,146 @@
-/**
- * SOLUȚIE FINALĂ HISTORY-COSMOS
- * Acest cod prioritizează AI-ul și afișează erorile direct în chat.
- */
-
-import {
-  saveQuizToD1,
-  updateQuizScore,
-  getStudentQuizHistory,
-  getStudentStats
-} from './quiz-storage-d1.js';
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    
-    // 1. HEADERS PENTRU SECURITATE (CORS)
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    };
 
-    // Răspuns rapid pentru verificări
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
+    // 1. CORS Headers
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+      });
     }
 
-    // ======================================================
-    // ZONA DE INTERCEPTARE AI (AICI ESTE SECRETUL!)
-    // ======================================================
-    // Ascultăm orice POST care pare a fi un mesaj de chat
-    if (request.method === 'POST' && (url.pathname === '/' || url.pathname === '/api/chat')) {
-      
-      // Încercăm să citim mesajul
-      let body;
+    // 2. API CHAT - TREBUIE SĂ FIE ÎNAINTE DE ASSETS!
+    if (url.pathname === "/api/chat" && request.method === "POST") {
       try {
-        body = await request.clone().json();
-      } catch (e) {
-        // Dacă nu e JSON, e probabil o încărcare de pagină, lăsăm să treacă
-        return env.ASSETS.fetch(request);
-      }
-
-      // Dacă are "userMessage", SIGUR e pentru Mentor!
-      if (body && body.userMessage) {
-        try {
-          const { userMessage, mode = 'standard', language = 'RO' } = body;
-
-          // 1. TEST DE CONEXIUNE (Debug)
-          // Scrie "TEST" în chat și vei primi răspuns instant fără AI
-          if (userMessage === "TEST") {
-            return new Response(JSON.stringify({ 
-              provider: 'system', 
-              response: "✅ CONEXIUNE REUȘITĂ! Worker-ul funcționează. Problema e la cheia DeepSeek." 
-            }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }});
-          }
-
-          // 2. VERIFICARE CHEI
-          if (!env.DEEPSEEK_API_KEY && !env.MISTRAL_API_KEY) {
-            throw new Error("LIPSĂ CHEI API ÎN CLOUDFLARE! Mergi la Settings -> Variables.");
-          }
-
-          const systemPrompt = language === 'RO' 
-            ? 'Ești Cronicus, profesor de istorie. Răspunde scurt și la obiect.' 
-            : 'You are a history teacher.';
-
-          // 3. APEL CĂTRE AI (DeepSeek)
-          let aiResponse;
-          try {
-             aiResponse = await callDeepSeek(env, userMessage, systemPrompt);
-          } catch (deepSeekError) {
-             // Dacă pică DeepSeek, încercăm Mistral
-             aiResponse = await callMistral(env, userMessage, systemPrompt);
-          }
-
-          return new Response(JSON.stringify(aiResponse), {
-            status: 200,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          });
-
-        } catch (finalError) {
-          // AICI ESTE MAGIA: Trimitem eroarea ca mesaj în chat!
-          return new Response(JSON.stringify({ 
-            provider: 'error', 
-            response: `⚠️ EROARE SERVER: ${finalError.message}` 
-          }), {
-            status: 200, // Trimitem 200 ca să afișeze mesajul în chat, nu în consolă
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          });
+        console.log('[Worker] Chat request interceptat!');
+        
+        const { userMessage } = await request.json();
+        
+        if (!userMessage) {
+          return new Response(
+            JSON.stringify({ error: "Mesaj gol" }), 
+            { 
+              status: 400,
+              headers: { "Content-Type": "application/json" }
+            }
+          );
         }
+
+        // Verifică API key
+        if (!env.DEEPSEEK_API_KEY) {
+          console.error('[Worker] DEEPSEEK_API_KEY lipsește!');
+          return new Response(
+            JSON.stringify({ error: "API key lipsește din environment" }), 
+            { 
+              status: 500,
+              headers: { "Content-Type": "application/json" }
+            }
+          );
+        }
+
+        // Apel DeepSeek
+        const aiResponse = await fetch("https://api.deepseek.com/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${env.DEEPSEEK_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: "deepseek-chat",
+            messages: [
+              { 
+                role: "system", 
+                content: "Ești un mentor de istorie înțelept și prietenos pentru platforma History-Cosmos." 
+              },
+              { role: "user", content: userMessage }
+            ],
+            temperature: 0.7,
+            max_tokens: 1000
+          })
+        });
+
+        if (!aiResponse.ok) {
+          const errorText = await aiResponse.text();
+          console.error('[Worker] DeepSeek API Error:', aiResponse.status, errorText);
+          
+          // Fallback către Mistral
+          if (env.MISTRAL_API_KEY) {
+            console.log('[Worker] Încercare fallback Mistral...');
+            const mistralResponse = await fetch("https://api.mistral.ai/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${env.MISTRAL_API_KEY}`
+              },
+              body: JSON.stringify({
+                model: "mistral-tiny",
+                messages: [
+                  { role: "system", content: "Ești un mentor de istorie." },
+                  { role: "user", content: userMessage }
+                ]
+              })
+            });
+            
+            if (mistralResponse.ok) {
+              const mistralData = await mistralResponse.json();
+              return new Response(
+                JSON.stringify({ 
+                  reply: mistralData.choices[0].message.content,
+                  model: "mistral-fallback"
+                }), 
+                { headers: { "Content-Type": "application/json" } }
+              );
+            }
+          }
+          
+          return new Response(
+            JSON.stringify({ 
+              error: `AI API Error: ${aiResponse.status}`, 
+              details: errorText 
+            }), 
+            { 
+              status: 500,
+              headers: { "Content-Type": "application/json" }
+            }
+          );
+        }
+
+        const aiData = await aiResponse.json();
+        const replyText = aiData.choices[0].message.content;
+
+        console.log('[Worker] Răspuns AI generat cu succes');
+        
+        return new Response(
+          JSON.stringify({ 
+            reply: replyText,
+            model: "deepseek-chat"
+          }), 
+          { headers: { "Content-Type": "application/json" } }
+        );
+
+      } catch (error) {
+        console.error('[Worker] Exception în chat:', error);
+        return new Response(
+          JSON.stringify({ 
+            error: "Eroare internă Worker", 
+            details: error.message 
+          }), 
+          { 
+            status: 500,
+            headers: { "Content-Type": "application/json" }
+          }
+        );
       }
     }
 
-    // ======================================================
-    // RUTELE PENTRU LOGIN ȘI QUIZ
-    // ======================================================
-    if (url.pathname === '/login' && request.method === 'POST') return handleLogin(request, env, corsHeaders);
-    if (url.pathname === '/register' && request.method === 'POST') return handleRegister(request, env, corsHeaders);
-    // ... restul rutelor de quiz sunt ok ...
+    // 3. AUTHENTICATION ROUTES (păstrează logica ta existentă)
+    // ... codul tău de auth aici ...
 
-    // FINAL: Dacă nu e nimic de mai sus, încarcă site-ul (HTML/CSS)
+    // 4. ASSETS - TREBUIE SĂ FIE LA FINAL!
     return env.ASSETS.fetch(request);
   }
 };
-
-// --- FUNCȚIILE AJUTĂTOARE ---
-
-async function callDeepSeek(env, message, prompt) {
-  if (!env.DEEPSEEK_API_KEY) throw new Error("Nu am găsit DEEPSEEK_API_KEY.");
-  
-  const response = await fetch('https://api.deepseek.com/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${env.DEEPSEEK_API_KEY}` },
-    body: JSON.stringify({
-      model: 'deepseek-chat',
-      messages: [{ role: 'system', content: prompt }, { role: 'user', content: message }]
-    })
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    // Verificăm dacă e eroare de credit
-    if (response.status === 402) throw new Error("Fonduri insuficiente pe DeepSeek!");
-    if (response.status === 401) throw new Error("Cheie DeepSeek invalidă!");
-    throw new Error(`DeepSeek Error ${response.status}: ${errText}`);
-  }
-
-  const data = await response.json();
-  return { provider: 'deepseek', response: data.choices[0].message.content };
-}
-
-async function callMistral(env, message, prompt) {
-  if (!env.MISTRAL_API_KEY) throw new Error("DeepSeek a picat și MISTRAL_API_KEY lipsește.");
-  
-  const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${env.MISTRAL_API_KEY}` },
-    body: JSON.stringify({
-      model: 'mistral-medium',
-      messages: [{ role: 'system', content: prompt }, { role: 'user', content: message }]
-    })
-  });
-
-  const data = await response.json();
-  return { provider: 'mistral', response: data.choices[0].message.content };
-}
-
-// Păstrează funcțiile de Login/Register de jos, ele merg bine.
-async function handleLogin(r, e, c) { const {username, password} = await r.json(); const u = await e.DB.prepare("SELECT * FROM users WHERE username=? AND password=?").bind(username, password).first(); return new Response(JSON.stringify(u ? {success:true, user:u} : {error:"Login eșuat"}), {headers:c}); }
-async function handleRegister(r, e, c) { const {username, password, fullname} = await r.json(); await e.DB.prepare("INSERT INTO users (id, username, password, role, fullname, status) VALUES (?, ?, ?, 'student', ?, 'pending')").bind(crypto.randomUUID(), username, password, fullname).run(); return new Response(JSON.stringify({success:true}), {status:201, headers:c}); }
