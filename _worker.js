@@ -1,146 +1,169 @@
+/**
+ * WORKER HISTORY-COSMOS - VERSIUNEA FINALĂ BLINDATĂ
+ * Rezolvă problema 405 și conflictele de rutare.
+ */
+
+import {
+  saveQuizToD1,
+  updateQuizScore,
+  getStudentQuizHistory,
+  getStudentStats
+} from './quiz-storage-d1.js';
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    // Curățăm calea: /login/ devine /login (scoatem slash-ul de la final)
+    const path = url.pathname.endsWith('/') && url.pathname.length > 1 
+                 ? url.pathname.slice(0, -1) 
+                 : url.pathname;
 
-    // 1. CORS Headers
-    if (request.method === "OPTIONS") {
-      return new Response(null, {
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        },
-      });
+    // 1. CORS GLOBAL (Rezolvă orice blocaj de securitate)
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    };
+
+    // Răspuns rapid pentru verificările browserului
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { headers: corsHeaders });
     }
 
-    // 2. API CHAT - TREBUIE SĂ FIE ÎNAINTE DE ASSETS!
-    if (url.pathname === "/api/chat" && request.method === "POST") {
+    // ============================================
+    // ZONA 1: AUTHENTICATION (Login & Register)
+    // ============================================
+    // Acum prindem '/login' SAU '/api/login' ca să fim siguri
+    if ((path === '/login' || path === '/api/login') && request.method === 'POST') {
+      return handleLogin(request, env, corsHeaders);
+    }
+
+    if ((path === '/register' || path === '/api/register') && request.method === 'POST') {
+      return handleRegister(request, env, corsHeaders);
+    }
+
+    // ============================================
+    // ZONA 2: AI CHAT (Mentorul)
+    // ============================================
+    // Prindem cererea de chat indiferent cum e trimisă
+    if (request.method === 'POST' && (path === '/' || path.includes('chat'))) {
       try {
-        console.log('[Worker] Chat request interceptat!');
+        const body = await request.clone().json();
         
-        const { userMessage } = await request.json();
-        
-        if (!userMessage) {
-          return new Response(
-            JSON.stringify({ error: "Mesaj gol" }), 
-            { 
-              status: 400,
-              headers: { "Content-Type": "application/json" }
-            }
-          );
+        // Dacă e mesaj de chat
+        if (body && body.userMessage) {
+           // TEST RAPID: Dacă scrii "TEST", răspunde direct
+           if (body.userMessage === "TEST") {
+             return new Response(JSON.stringify({ 
+               reply: "✅ CONEXIUNE REUȘITĂ! Worker-ul te aude.",
+               response: "✅ CONEXIUNE REUȘITĂ! Worker-ul te aude."
+             }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }});
+           }
+
+           // Verificare Chei
+           if (!env.DEEPSEEK_API_KEY && !env.MISTRAL_API_KEY) {
+             return new Response(JSON.stringify({ error: "LIPSEȘTE CHEIA API!" }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }});
+           }
+
+           // Logica AI (DeepSeek)
+           const systemPrompt = "Ești Cronicus, un profesor de istorie pasionat.";
+           const aiResponse = await callDeepSeek(env, body.userMessage, systemPrompt);
+           
+           return new Response(JSON.stringify(aiResponse), {
+             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+           });
         }
-
-        // Verifică API key
-        if (!env.DEEPSEEK_API_KEY) {
-          console.error('[Worker] DEEPSEEK_API_KEY lipsește!');
-          return new Response(
-            JSON.stringify({ error: "API key lipsește din environment" }), 
-            { 
-              status: 500,
-              headers: { "Content-Type": "application/json" }
-            }
-          );
-        }
-
-        // Apel DeepSeek
-        const aiResponse = await fetch("https://api.deepseek.com/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${env.DEEPSEEK_API_KEY}`
-          },
-          body: JSON.stringify({
-            model: "deepseek-chat",
-            messages: [
-              { 
-                role: "system", 
-                content: "Ești un mentor de istorie înțelept și prietenos pentru platforma History-Cosmos." 
-              },
-              { role: "user", content: userMessage }
-            ],
-            temperature: 0.7,
-            max_tokens: 1000
-          })
-        });
-
-        if (!aiResponse.ok) {
-          const errorText = await aiResponse.text();
-          console.error('[Worker] DeepSeek API Error:', aiResponse.status, errorText);
-          
-          // Fallback către Mistral
-          if (env.MISTRAL_API_KEY) {
-            console.log('[Worker] Încercare fallback Mistral...');
-            const mistralResponse = await fetch("https://api.mistral.ai/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${env.MISTRAL_API_KEY}`
-              },
-              body: JSON.stringify({
-                model: "mistral-tiny",
-                messages: [
-                  { role: "system", content: "Ești un mentor de istorie." },
-                  { role: "user", content: userMessage }
-                ]
-              })
-            });
-            
-            if (mistralResponse.ok) {
-              const mistralData = await mistralResponse.json();
-              return new Response(
-                JSON.stringify({ 
-                  reply: mistralData.choices[0].message.content,
-                  model: "mistral-fallback"
-                }), 
-                { headers: { "Content-Type": "application/json" } }
-              );
-            }
-          }
-          
-          return new Response(
-            JSON.stringify({ 
-              error: `AI API Error: ${aiResponse.status}`, 
-              details: errorText 
-            }), 
-            { 
-              status: 500,
-              headers: { "Content-Type": "application/json" }
-            }
-          );
-        }
-
-        const aiData = await aiResponse.json();
-        const replyText = aiData.choices[0].message.content;
-
-        console.log('[Worker] Răspuns AI generat cu succes');
-        
-        return new Response(
-          JSON.stringify({ 
-            reply: replyText,
-            model: "deepseek-chat"
-          }), 
-          { headers: { "Content-Type": "application/json" } }
-        );
-
-      } catch (error) {
-        console.error('[Worker] Exception în chat:', error);
-        return new Response(
-          JSON.stringify({ 
-            error: "Eroare internă Worker", 
-            details: error.message 
-          }), 
-          { 
-            status: 500,
-            headers: { "Content-Type": "application/json" }
-          }
-        );
+      } catch (e) {
+        // Ignorăm erorile de JSON, poate nu era pentru AI
       }
     }
 
-    // 3. AUTHENTICATION ROUTES (păstrează logica ta existentă)
-    // ... codul tău de auth aici ...
+    // ============================================
+    // ZONA 3: QUIZ (Baza de Date)
+    // ============================================
+    if (path === '/save-quiz' && request.method === 'POST') return handleSaveQuiz(request, env, corsHeaders);
+    if (path === '/update-score' && request.method === 'POST') return handleUpdateScore(request, env, corsHeaders);
+    if (path === '/quiz-history' && request.method === 'GET') return handleGetHistory(request, env, corsHeaders);
+    if (path === '/student-stats' && request.method === 'GET') return handleGetStats(request, env, corsHeaders);
 
-    // 4. ASSETS - TREBUIE SĂ FIE LA FINAL!
+    // ============================================
+    // ZONA 4: FALLBACK (Site Static)
+    // ============================================
+    // Dacă nu a fost prinsă mai sus, încărcăm HTML-ul (index.html, imagini, etc.)
     return env.ASSETS.fetch(request);
   }
 };
+
+// --- FUNCȚII AUXILIARE ---
+
+async function handleLogin(request, env, corsHeaders) {
+  try {
+    const { username, password } = await request.json();
+    // Verificăm dacă baza de date există
+    if (!env.DB) throw new Error("Baza de date D1 nu este conectată!");
+    
+    const user = await env.DB.prepare(
+      "SELECT * FROM users WHERE username = ? AND password = ?"
+    ).bind(username, password).first();
+
+    if (!user) {
+      return new Response(JSON.stringify({ error: "Utilizator sau parolă greșită!" }), { 
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+
+    return new Response(JSON.stringify({ success: true, user }), { 
+      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: e.message }), { 
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
+  }
+}
+
+async function handleRegister(request, env, corsHeaders) {
+  try {
+    const { username, password, fullname } = await request.json();
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      "INSERT INTO users (id, username, password, role, fullname, status) VALUES (?, ?, ?, 'student', ?, 'pending')"
+    ).bind(id, username, password, fullname).run();
+
+    return new Response(JSON.stringify({ success: true }), { 
+      status: 201, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: "Eroare la înregistrare (poate userul există deja)" }), { 
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
+  }
+}
+
+async function callDeepSeek(env, message, prompt) {
+    const apiKey = env.DEEPSEEK_API_KEY;
+    try {
+        const response = await fetch('https://api.deepseek.com/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+            body: JSON.stringify({
+                model: 'deepseek-chat',
+                messages: [{ role: 'system', content: prompt }, { role: 'user', content: message }]
+            })
+        });
+        const data = await response.json();
+        return { 
+            reply: data.choices[0].message.content,
+            response: data.choices[0].message.content 
+        };
+    } catch (error) {
+        // Fallback simplu în caz de eroare
+        return { reply: "Eroare conexiune AI: " + error.message };
+    }
+}
+
+// Funcții Quiz (simplificate pentru spațiu, asigură-te că importurile funcționează)
+async function handleSaveQuiz(r, e, c) { try { const d = await r.json(); return new Response(JSON.stringify(await saveQuizToD1(e, d)), {headers: c}); } catch(err){ return new Response(JSON.stringify({error: err.message}), {status:500, headers:c}); } }
+async function handleUpdateScore(r, e, c) { try { const {quizId, score, maxScore} = await r.json(); return new Response(JSON.stringify(await updateQuizScore(e, quizId, score, maxScore)), {headers: c}); } catch(err){ return new Response(JSON.stringify({error: err.message}), {status:500, headers:c}); } }
+async function handleGetHistory(r, e, c) { try { const sId = new URL(r.url).searchParams.get('studentId'); return new Response(JSON.stringify(await getStudentQuizHistory(e, sId)), {headers: c}); } catch(err){ return new Response(JSON.stringify({error: err.message}), {status:500, headers:c}); } }
+async function handleGetStats(r, e, c) { try { const sId = new URL(r.url).searchParams.get('studentId'); return new Response(JSON.stringify(await getStudentStats(e, sId)), {headers: c}); } catch(err){ return new Response(JSON.stringify({error: err.message}), {status:500, headers:c}); } }
