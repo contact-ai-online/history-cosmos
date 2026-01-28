@@ -1,138 +1,100 @@
 /**
- * WORKER UNIVERSAL - AION V7
- * Scop: Rezolvă incompatibilitatea dintre Frontend și Backend
+ * AION ORCHESTRATOR v6.0 - HYBRID ENGINE
+ * Autor: RuslanOS Master Brain
+ * Funcție: Unifică Login D1, Quiz și AI (Mistral/DeepSeek) sub un singur scut.
  */
 
-// Importuri (Lasă-le așa cum sunt)
-import {
-  saveQuizToD1,
-  updateQuizScore,
-  getStudentQuizHistory,
-  getStudentStats
-} from './quiz-storage-d1.js';
+import { saveQuizToD1, updateQuizScore, getStudentQuizHistory, getStudentStats } from './quiz-storage-d1.js';
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const path = url.pathname;
+    const path = url.pathname.replace(/\/$/, ""); // Elimină slash-ul final dacă există
 
-    // 1. CORS TOTAL (Lăsăm orice comunicare)
+    // 1. SCUTUL CORS (Permite tot, blochează erorile de securitate)
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': '*',
     };
 
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
-    }
+    if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
-    // ============================================
-    // ZONA 1: LOGIN (Păstrăm ce funcționează)
-    // ============================================
-    if ((path.includes('/login') || path.includes('/api/login')) && request.method === 'POST') {
-      return handleLogin(request, env, corsHeaders);
-    }
+    try {
+      // ============================================
+      // ZONA A: LOGIN & ACCES (Garantează intrarea)
+      // ============================================
+      if (path.includes('login')) {
+        const body = await request.json();
+        const { username, password } = body;
 
-    // ============================================
-    // ZONA 2: CHAT (ADAPTOR UNIVERSAL)
-    // ============================================
-    if (request.method === 'POST' && (path.includes('chat') || path === '/')) {
-      try {
+        // Fail-safe: Dacă scrii 'start', intri indiferent de ce zice baza de date
+        if (password === 'start') {
+          return new Response(JSON.stringify({ success: true, user: { name: "Ruslan", role: "teacher" } }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+
+        // Căutare în D1 (Dacă DB e conectată)
+        if (env.DB) {
+          const user = await env.DB.prepare("SELECT * FROM users WHERE username = ? AND password = ?").bind(username, password).first();
+          if (user) return new Response(JSON.stringify({ success: true, user }), { headers: corsHeaders });
+        }
+        
+        return new Response(JSON.stringify({ error: "Date incorecte" }), { status: 401, headers: corsHeaders });
+      }
+
+      // ============================================
+      // ZONA B: CHAT AI (Adaptorul Universal)
+      // ============================================
+      if (path.includes('chat') || (request.method === 'POST' && path === "")) {
         const body = await request.clone().json();
         
-        // Căutăm mesajul oriunde ar fi el
-        const userText = body.message || body.userMessage || body.prompt || body.text;
+        // Căutăm mesajul sub orice denumire posibilă (Hibrid)
+        const userText = body.message || body.userMessage || body.prompt || body.text || body.content;
 
-        if (!userText) {
-          throw new Error("Nu am găsit textul mesajului.");
-        }
+        if (!userText) return new Response(JSON.stringify({ reply: "Mesaj gol recepționat." }), { headers: corsHeaders });
 
-        // Aici selectăm AI-ul (Mistral e cel mai sigur acum)
+        // Alegem prima cheie disponibilă din Cloudflare Settings
         const apiKey = env.AI_API_KEY || env.MISTRAL_API_KEY || env.DEEPSEEK_API_KEY;
-        let aiReply = "Sunt aici, dar nu am cheie API configurată.";
-
-        if (apiKey) {
-             const aiReq = await fetch('https://api.mistral.ai/v1/chat/completions', {
-             method: 'POST',
-             headers: {
-               'Content-Type': 'application/json',
-               'Authorization': `Bearer ${apiKey}`
-             },
-             body: JSON.stringify({
-               model: "mistral-small-latest",
-               messages: [
-                 { role: "system", content: "Ești Cronicus, profesor de istorie. Răspunzi scurt și la obiect." },
-                 { role: "user", content: userText }
-               ]
-             })
-           });
-           const aiData = await aiReq.json();
-           aiReply = aiData.choices?.[0]?.message?.content || "AI-ul nu a răspuns corect.";
-        } else {
-            aiReply = "Configurare incompletă: Lipsește AI_API_KEY.";
+        
+        if (!apiKey) {
+          return new Response(JSON.stringify({ reply: "⚠️ Eroare: Setează AI_API_KEY în Cloudflare!" }), { headers: corsHeaders });
         }
 
-        // --- MAGIA UNIVERSALĂ ---
-        // Trimitem răspunsul sub toate formele posibile, ca să nu existe erori de interpretare
-        const universalResponse = {
-            response: aiReply,       // Standard
-            reply: aiReply,          // Alternativă frecventă
-            message: aiReply,        // Stil Telegram
-            answer: aiReply,         // Stil Q&A
-            content: aiReply,        // Stil OpenAI
-            choices: [{ message: { content: aiReply } }] // Stil OpenAI Full
-        };
-
-        return new Response(JSON.stringify(universalResponse), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        // Apelăm Mistral (cel mai stabil acum)
+        const aiResponse = await fetch('https://api.mistral.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          body: JSON.stringify({
+            model: "mistral-small-latest",
+            messages: [{ role: "system", content: "Ești Cronicus, profesor de istorie. Răspunzi scurt și util." }, { role: "user", content: userText }]
+          })
         });
 
-      } catch (e) {
-        return new Response(JSON.stringify({ 
-            error: e.message,
-            reply: "A apărut o eroare tehnică: " + e.message 
-        }), { headers: corsHeaders });
+        const data = await aiResponse.json();
+        const text = data.choices?.[0]?.message?.content || "AI indisponibil.";
+
+        // RĂSPUNS HIBRID (Trimitem toate formatele deodată ca să "nimerim" ce vrea site-ul)
+        return new Response(JSON.stringify({
+          response: text,       // Format 1
+          reply: text,          // Format 2
+          message: text,        // Format 3
+          answer: text,         // Format 4
+          choices: [{ message: { content: text } }] // Format 5 (OpenAI style)
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
+
+      // ============================================
+      // ZONA C: QUIZ & STATS
+      // ============================================
+      if (path.includes('save-quiz')) return new Response(JSON.stringify(await saveQuizToD1(env, await request.json())), { headers: corsHeaders });
+      if (path.includes('quiz-history')) return new Response(JSON.stringify(await getStudentQuizHistory(env, new URL(request.url).searchParams.get('studentId'))), { headers: corsHeaders });
+
+    } catch (e) {
+      // Dacă ceva crapă, returnăm eroarea curat
+      return new Response(JSON.stringify({ error: e.message, reply: "Eroare tehnică: " + e.message }), { headers: corsHeaders });
     }
 
-    // ============================================
-    // ZONA 3: STATIC & QUIZ
-    // ============================================
-    try {
-        if (path.includes('save-quiz')) return handleSaveQuiz(request, env, corsHeaders);
-        // ... alte rute quiz ...
-    } catch (e) {}
-
+    // FALLBACK: Încarcă site-ul static (HTML/CSS/JS)
     return env.ASSETS.fetch(request);
   }
 };
-
-// --- FUNCȚIA DE LOGIN (CARE MERGEA) ---
-async function handleLogin(request, env, corsHeaders) {
-  try {
-    const { username, password } = await request.json();
-    
-    // BACKUP DE URGENȚĂ: Dacă DB nu merge, lasă-l pe Ruslan să intre cu "start"
-    if (password === 'start') {
-         return new Response(JSON.stringify({ success: true, user: { name: "Ruslan", role: "teacher" } }), { 
-          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
-    }
-
-    if (!env.DB) throw new Error("No DB");
-    const user = await env.DB.prepare("SELECT * FROM users WHERE username = ? AND password = ?").bind(username, password).first();
-
-    if (!user) {
-      return new Response(JSON.stringify({ error: "Date incorecte" }), { status: 401, headers: corsHeaders });
-    }
-    return new Response(JSON.stringify({ success: true, user }), { status: 200, headers: corsHeaders });
-
-  } catch (e) {
-     // Dacă e eroare de DB, tot te lăsăm să intri dacă ai parola 'start' (Fail-safe)
-     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: corsHeaders });
-  }
-}
-
-// Funcții Dummy pentru Quiz (ca să nu crape importurile)
-async function handleSaveQuiz(r,e,c) { return new Response("OK", {headers:c}); }
