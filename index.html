@@ -829,75 +829,77 @@
         // ============================================
 
       // ============================================
-        // CONFIGURARE BACKEND
-        // ============================================
-        const API_BASE_URL = 'https://history-cosmos.contact-ai.online';
+      // CONFIGURARE BACKEND
+      // ============================================
+      // Folosește căi relative pentru a evita problemele cu CORS și domenii
+      const API_BASE_URL = ''; // Căi relative
 
-        async function handleAuth(action) {
-            const user = document.getElementById('user-input').value;
-            const pass = document.getElementById('pass-input').value;
-            const msgLabel = document.getElementById('login-msg');
+      async function handleAuth(action) {
+          const user = document.getElementById('user-input').value;
+          const pass = document.getElementById('pass-input').value;
+          const msgLabel = document.getElementById('login-msg');
 
-            if (!user || !pass) {
-                if(msgLabel) msgLabel.innerText = "Introdu user și parolă!";
-                else alert("Introdu user și parolă!");
-                return;
-            }
+          if (!user || !pass) {
+              if(msgLabel) msgLabel.innerText = "Introdu user și parolă!";
+              else alert("Introdu user și parolă!");
+              return;
+          }
 
-            let fullName = null;
-            if (action === 'register') {
-                fullName = prompt("Introdu numele tău complet (ex: Mihai Eminescu):");
-                if (!fullName) return;
-            }
+          let fullName = null;
+          if (action === 'register') {
+              fullName = prompt("Introdu numele tău complet (ex: Mihai Eminescu):");
+              if (!fullName) return;
+          }
 
-            if(msgLabel) {
-                msgLabel.innerText = "Conectare...";
-                msgLabel.className = "text-xs text-blue-400 mt-4 h-4 animate-pulse";
-            }
+          if(msgLabel) {
+              msgLabel.innerText = "Conectare...";
+              msgLabel.className = "text-xs text-blue-400 mt-4 h-4 animate-pulse";
+          }
 
-            try {
-                const response = await fetch(`${API_BASE_URL}/${action}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        username: user, 
-                        password: pass, 
-                        fullname: fullName 
-                    })
-                });
+          try {
+              // Folosește calea relativă pentru login
+              const response = await fetch(`/${action}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                      username: user,
+                      password: pass,
+                      fullname: fullName
+                  })
+              });
 
-                const data = await response.json();
+              const data = await response.json();
 
-                if (response.ok) {
-                    if (action === 'register') {
-                        alert("Cont creat! Așteaptă aprobarea profesorului.");
-                        if(msgLabel) msgLabel.innerText = "Cont creat. Așteaptă aprobarea.";
-                    } else {
-                        // LOGIN REUȘIT -> Pornim interfața ta originală
-                        localStorage.setItem('userSession', JSON.stringify(data.user));
-                        
-                        // AICI FOLOSIM FUNCȚIA TA VECHE 'start'
-                        start(
-                            data.user.role, 
-                            data.user.fullname || data.user.username, 
-                            data.user.role === 'teacher' ? 'ADMIN' : 'ELEV'
-                        );
-                    }
-                } else {
-                    const errMsg = data.error || "Eroare necunoscută";
-                    if(msgLabel) {
-                        msgLabel.innerText = errMsg;
-                        msgLabel.className = "text-xs text-red-500 mt-4 h-4 font-bold";
-                    } else {
-                        alert(errMsg);
-                    }
-                }
-            } catch (err) {
-                console.error(err);
-                if(msgLabel) msgLabel.innerText = "Eroare conexiune server!";
-                else alert("Eroare conexiune server!");
-            }
-        }
+              if (response.ok) {
+                  if (action === 'register') {
+                      alert("Cont creat! Așteaptă aprobarea profesorului.");
+                      if(msgLabel) msgLabel.innerText = "Cont creat. Așteaptă aprobarea.";
+                  } else {
+                      // LOGIN REUȘIT -> Pornim interfața ta originală
+                      localStorage.setItem('userSession', JSON.stringify(data.user));
+                      
+                      // AICI FOLOSIM FUNCȚIA TA VECHE 'start'
+                      start(
+                          data.user.role,
+                          data.user.fullname || data.user.username,
+                          data.user.role === 'teacher' ? 'ADMIN' : 'ELEV'
+                      );
+                  }
+              } else {
+                  const errMsg = data.error || "Eroare necunoscută";
+                  if(msgLabel) {
+                      msgLabel.innerText = errMsg;
+                      msgLabel.className = "text-xs text-red-500 mt-4 h-4 font-bold";
+                  } else {
+                      alert(errMsg);
+                  }
+              }
+          } catch (err) {
+              console.error(err);
+              if(msgLabel) msgLabel.innerText = "Eroare conexiune server!";
+              else alert("Eroare conexiune server!");
+          }
+      }
 
         function start(role, name, lbl) {
             currentRole = role;
@@ -1589,11 +1591,8 @@
             addQuestionToChat(question);
             
             try {
-                // URL backend (folosește API_BASE_URL definit mai sus sau localhost pentru development)
-                const apiUrl = API_BASE_URL ? `${API_BASE_URL}/api/cronicus` : '/api/cronicus';
-                
-                // Trimite cererea către backend
-                const response = await fetch(apiUrl, {
+                // Folosește calea relativă pentru API
+                const response = await fetch('/api/cronicus', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1615,7 +1614,11 @@
                 hideLoading();
                 
                 // Adaugă răspunsul în chat
-                addResponseToChat(data.answer, mode, data.metadata);
+                // Worker-ul returnează { answer: "...", provider: "..." } fără metadata
+                addResponseToChat(data.answer, mode, {
+                    wordCount: data.answer ? data.answer.split(/\s+/).length : 0,
+                    provider: data.provider || 'Unknown'
+                });
                 
                 // Resetează input-ul
                 document.getElementById('cronicus-question').value = '';
