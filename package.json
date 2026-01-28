@@ -1,4 +1,8 @@
 {
+  "name": "history-cosmos-worker",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "_worker.js",
   "dependencies": {
     "hono": "^4.0.0"
   }
