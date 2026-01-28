@@ -276,43 +276,140 @@
                         </div>
                     </div>
 
-                    <!-- MENTOR AI -->
-<div id="v-mentor" class="view-content flex flex-col h-full">
-    
-    <!-- ZONĂ MESAJE MENTOR -->
-    <div id="mentor-chat" class="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 mb-4 flex-grow overflow-y-auto">
-        <div class="flex gap-4">
-            <div class="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center">
-                <i class="fa-solid fa-robot text-blue-400"></i>
-            </div>
-            <div class="bg-slate-800 p-4 rounded-2xl rounded-tl-none text-sm text-slate-300 max-w-xl" data-i18n="mentor_greeting">
-                Salut! Sunt Cronicus. Discutăm despre istorie?
-            </div>
-        </div>
-    </div>
-
-    <!-- ZONA INPUT MENTOR - CONECTATĂ -->
-    <div class="flex gap-2">
-        <button class="w-12 h-12 bg-slate-800 rounded-xl text-slate-400 hover:text-red-500">
-            <i class="fa-solid fa-microphone"></i>
-        </button>
-        <input 
-            id="mentor-input"
-            type="text"
-            class="flex-grow bg-slate-800 border border-slate-700 rounded-xl px-4 text-sm text-white outline-none"
-            placeholder="Scrie..." 
-            data-i18n-placeholder="write"
-            onkeypress="if(event.key==='Enter') sendMentorMessage()"
-        >
-        <button 
-            class="w-12 h-12 bg-blue-600 rounded-xl text-white"
-            onclick="sendMentorMessage()"
-        >
-            <i class="fa-solid fa-paper-plane"></i>
-        </button>
-    </div>
-</div>
-
+                    <!-- CRONICUS AI - SISTEM DUAL MODE -->
+                    <div id="v-mentor" class="view-content flex flex-col h-full">
+                        <div class="mb-6">
+                            <h2 class="text-2xl font-bold text-white mb-2">CRONICUS <span class="text-blue-400">AI</span></h2>
+                            <p class="text-sm text-slate-400">Sistem expert pentru istorie - Republica Moldova (clasele X-XII)</p>
+                        </div>
+                        
+                        <!-- SELECTOR MODE -->
+                        <div class="glass rounded-2xl p-4 mb-6">
+                            <p class="text-sm font-bold text-slate-300 mb-3">Selectează modul de răspuns:</p>
+                            <div class="flex gap-4">
+                                <label class="flex-1 cursor-pointer">
+                                    <input type="radio" name="cronicus-mode" value="rapid" class="hidden peer" checked>
+                                    <div class="bg-slate-800 border-2 border-slate-700 peer-checked:border-blue-500 peer-checked:bg-blue-900/20 p-4 rounded-xl text-center transition-all hover:bg-slate-700/50">
+                                        <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                                            <i class="fa-solid fa-bolt text-white"></i>
+                                        </div>
+                                        <h3 class="font-bold text-white mb-1">⚡ MOD RAPID</h3>
+                                        <p class="text-xs text-slate-400">120-200 cuvinte • Mistral 7B</p>
+                                        <p class="text-xs text-slate-300 mt-2">Răspunsuri concise pentru întrebări directe</p>
+                                    </div>
+                                </label>
+                                
+                                <label class="flex-1 cursor-pointer">
+                                    <input type="radio" name="cronicus-mode" value="profund" class="hidden peer">
+                                    <div class="bg-slate-800 border-2 border-slate-700 peer-checked:border-purple-500 peer-checked:bg-purple-900/20 p-4 rounded-xl text-center transition-all hover:bg-slate-700/50">
+                                        <div class="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                                            <i class="fa-solid fa-graduation-cap text-white"></i>
+                                        </div>
+                                        <h3 class="font-bold text-white mb-1">🎓 MOD PROFUND</h3>
+                                        <p class="text-xs text-slate-400">Analiză detaliată • Llama 70B</p>
+                                        <p class="text-xs text-slate-300 mt-2">Evaluare eseuri BAC + analiză multicauzală</p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- ZONĂ ÎNTREBARE -->
+                        <div class="glass rounded-2xl p-6 mb-6 flex-grow flex flex-col">
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full flex items-center justify-center">
+                                    <i class="fa-solid fa-robot text-white"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-white">CRONICUS</h3>
+                                    <p class="text-xs text-slate-400" id="mode-indicator">Mod: Rapid (120-200 cuvinte)</p>
+                                </div>
+                            </div>
+                            
+                            <div class="flex-grow overflow-y-auto mb-6" id="cronicus-chat">
+                                <!-- Mesajul de bun venit -->
+                                <div class="flex gap-3 mb-6">
+                                    <div class="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center flex-shrink-0">
+                                        <i class="fa-solid fa-robot text-blue-400 text-sm"></i>
+                                    </div>
+                                    <div class="bg-slate-800 p-4 rounded-2xl rounded-tl-none max-w-xl">
+                                        <p class="text-sm text-slate-300">Salut! Sunt <span class="text-blue-400 font-bold">CRONICUS</span>, mentorul tău de istorie pentru Republica Moldova. Cu ce te pot ajuta astăzi?</p>
+                                        <p class="text-xs text-slate-500 mt-2">💡 <strong>Sfat:</strong> Pentru răspunsuri rapide, folosește modul ⚡. Pentru analize detaliate și evaluare eseuri BAC, alege modul 🎓.</p>
+                                    </div>
+                                </div>
+                                
+                                <!-- Răspunsurile vor apărea aici -->
+                                <div id="cronicus-responses"></div>
+                            </div>
+                            
+                            <!-- INPUT ZONE -->
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="text-sm font-bold text-slate-300 mb-2 block">Întrebare / Eseu pentru evaluare:</label>
+                                    <textarea
+                                        id="cronicus-question"
+                                        class="w-full bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-sm h-32 outline-none focus:border-blue-500 resize-none"
+                                        placeholder="Scrie întrebarea ta de istorie sau încarcă un eseu pentru evaluare BAC..."
+                                        data-i18n-placeholder="write_question"
+                                    ></textarea>
+                                    <div class="flex justify-between items-center mt-2">
+                                        <p class="text-xs text-slate-500" id="char-count">0 caractere</p>
+                                        <p class="text-xs text-red-400 hidden" id="min-chars-error">Minim 5 caractere necesare</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex gap-3">
+                                    <button onclick="document.getElementById('file-upload').click()" class="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl flex items-center gap-2 transition">
+                                        <i class="fa-solid fa-paperclip"></i>
+                                        <span class="text-sm">Atașează</span>
+                                    </button>
+                                    <input type="file" id="file-upload" accept=".txt,.pdf,.doc,.docx" class="hidden">
+                                    
+                                    <button onclick="clearCronicusChat()" class="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl flex items-center gap-2 transition">
+                                        <i class="fa-solid fa-trash-can"></i>
+                                        <span class="text-sm">Șterge</span>
+                                    </button>
+                                    
+                                    <button onclick="askCronicus()" id="ask-cronicus-btn" class="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-3 transition">
+                                        <i class="fa-solid fa-paper-plane"></i>
+                                        <span>TRIMITE ÎNTREBAREA</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- LOADING & ERROR STATES -->
+                        <div id="cronicus-loading" class="hidden glass rounded-2xl p-6 mb-6">
+                            <div class="flex items-center gap-4">
+                                <div class="w-12 h-12 bg-blue-600/20 rounded-full flex items-center justify-center">
+                                    <i class="fa-solid fa-spinner fa-spin text-blue-400 text-xl"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-white">CRONICUS procesează...</h3>
+                                    <p class="text-sm text-slate-400" id="loading-details">Se generează răspunsul cu AI</p>
+                                </div>
+                            </div>
+                            <div class="mt-4">
+                                <div class="h-1 bg-slate-800 rounded-full overflow-hidden">
+                                    <div class="h-full bg-gradient-to-r from-blue-500 to-purple-500 animate-pulse" style="width: 60%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="cronicus-error" class="hidden glass rounded-2xl p-6 mb-6 border border-red-500/30 bg-red-900/10">
+                            <div class="flex items-center gap-4">
+                                <div class="w-12 h-12 bg-red-600/20 rounded-full flex items-center justify-center">
+                                    <i class="fa-solid fa-triangle-exclamation text-red-400 text-xl"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <h3 class="font-bold text-white">Eroare CRONICUS</h3>
+                                    <p class="text-sm text-slate-300" id="error-message">A apărut o eroare la procesarea cererii</p>
+                                </div>
+                                <button onclick="hideError()" class="text-red-400 hover:text-red-300">
+                                    <i class="fa-solid fa-xmark text-xl"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
 
                     <!-- MANUAL -->
                     <div id="v-manual" class="view-content hidden h-full flex-col">
@@ -637,7 +734,8 @@
                 cancel: "Anulează",
                 save: "Salvează",
                 mode_fast: "RĂSPUNS RAPID",
-                mode_deep: "ANALIZĂ PROFUNDĂ"
+                mode_deep: "ANALIZĂ PROFUNDĂ",
+                write_question: "Scrie întrebarea ta de istorie sau încarcă un eseu pentru evaluare BAC..."
             },
             RU: {
                 welcome: "ДОБРО ПОЖАЛОВАТЬ!",
@@ -709,7 +807,8 @@
                 cancel: "Отменить",
                 save: "Сохранить",
                 mode_fast: "БЫСТРЫЙ ОТВЕТ",
-                mode_deep: "ГЛУБОКИЙ АНАЛИЗ"
+                mode_deep: "ГЛУБОКИЙ АНАЛИЗ",
+                write_question: "Напишите ваш вопрос по истории или загрузите эссе для оценки BAC..."
             }
         };
 
@@ -732,7 +831,7 @@
       // ============================================
         // CONFIGURARE BACKEND
         // ============================================
-        const API_BASE_URL = '';
+        const API_BASE_URL = 'https://history-cosmos.contact-ai.online';
 
         async function handleAuth(action) {
             const user = document.getElementById('user-input').value;
@@ -824,45 +923,14 @@
         }
 
         function nav(id) {
-    console.log('🧭 Navigare către:', id);
-    
-    // 1. Ascunde toate view-urile (cu verificare de siguranță)
-    document.querySelectorAll('.view-content').forEach(v => {
-        if (v && v.style) {
-            v.style.display = 'none';
+            document.querySelectorAll('.view-content').forEach(v => v.style.display = 'none');
+            const target = document.getElementById('v-' + id);
+            target.style.display = (id === 'mentor' || id === 'manual' || id === 'admin' || id === 'homework' || id === 'uploads' || id === 'online' || id === 'quiz') ? 'flex' : 'block';
+            
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            const btn = document.getElementById('t-' + id);
+            if(btn) btn.classList.add('active');
         }
-    });
-    
-    // 2. Dezactivează toate tab-urile (cu verificare de siguranță)  
-    document.querySelectorAll('.tab-btn').forEach(b => {
-        if (b && b.classList) {
-            b.classList.remove('active');
-        }
-    });
-
-    // 3. Găsește elementele țintă
-    const targetId = 'v-' + id;
-    const target = document.getElementById(targetId);
-    const btn = document.getElementById('t-' + id);
-
-    // 4. Afișează view-ul selectat (DOAR dacă există!)
-    if (target) {
-        const flexViews = ['mentor', 'manual', 'admin', 'homework', 'uploads', 'online', 'quiz'];
-        target.style.display = flexViews.includes(id) ? 'flex' : 'block';
-        console.log('✅ View afișat:', targetId);
-    } else {
-        console.warn('⚠️ View nu există:', targetId);
-        return; // Oprește execuția pentru a preveni alte erori
-    }
-    
-    // 5. Activează tab-ul (DOAR dacă există!)
-    if (btn) {
-        btn.classList.add('active');
-        console.log('✅ Tab activat:', 't-' + id);
-    } else {
-        console.warn('⚠️ Tab button nu există:', 't-' + id);
-    }
-}
 
         function pubTopic() {
             const t = document.getElementById('topic-edit').value;
@@ -1437,11 +1505,287 @@
             }, 1000);
         }
 
+        // ============================================
+        // CRONICUS AI FUNCTIONS
+        // ============================================
+        
+        // Inițializare evenimente CRONICUS
+        function initCronicus() {
+            // Actualizare indicator mod la schimbare
+            document.querySelectorAll('input[name="cronicus-mode"]').forEach(radio => {
+                radio.addEventListener('change', updateModeIndicator);
+            });
+            
+            // Actualizare număr caractere
+            const questionInput = document.getElementById('cronicus-question');
+            if (questionInput) {
+                questionInput.addEventListener('input', updateCharCount);
+                updateCharCount(); // Inițializare
+            }
+            
+            updateModeIndicator(); // Inițializare indicator
+        }
+        
+        // Actualizare indicator mod
+        function updateModeIndicator() {
+            const mode = document.querySelector('input[name="cronicus-mode"]:checked').value;
+            const indicator = document.getElementById('mode-indicator');
+            
+            if (mode === 'rapid') {
+                indicator.textContent = cL === 'RO'
+                    ? 'Mod: Rapid (120-200 cuvinte)'
+                    : 'Режим: Быстрый (120-200 слов)';
+                indicator.className = 'text-xs text-blue-400';
+            } else {
+                indicator.textContent = cL === 'RO'
+                    ? 'Mod: Profund (analiză detaliată + evaluare BAC)'
+                    : 'Режим: Глубокий (детальный анализ + оценка BAC)';
+                indicator.className = 'text-xs text-purple-400';
+            }
+        }
+        
+        // Actualizare număr caractere
+        function updateCharCount() {
+            const question = document.getElementById('cronicus-question').value;
+            const charCount = document.getElementById('char-count');
+            const errorMsg = document.getElementById('min-chars-error');
+            
+            const count = question.length;
+            charCount.textContent = `${count} ${cL === 'RO' ? 'caractere' : 'символов'}`;
+            
+            // Validare minim 5 caractere
+            if (count > 0 && count < 5) {
+                errorMsg.classList.remove('hidden');
+                charCount.className = 'text-xs text-red-500';
+            } else {
+                errorMsg.classList.add('hidden');
+                charCount.className = count >= 5 ? 'text-xs text-green-500' : 'text-xs text-slate-500';
+            }
+        }
+        
+        // Funcția principală askCronicus()
+        async function askCronicus() {
+            const question = document.getElementById('cronicus-question').value.trim();
+            const mode = document.querySelector('input[name="cronicus-mode"]:checked').value;
+            
+            // Validare
+            if (!question) {
+                showError(cL === 'RO' ? 'Introdu o întrebare!' : 'Введите вопрос!');
+                return;
+            }
+            
+            if (question.length < 5) {
+                showError(cL === 'RO' ? 'Întrebarea trebuie să aibă minim 5 caractere!' : 'Вопрос должен содержать минимум 5 символов!');
+                return;
+            }
+            
+            // Ascunde erori anterioare
+            hideError();
+            
+            // Afișează loading state
+            showLoading(mode);
+            
+            // Adaugă întrebarea în chat
+            addQuestionToChat(question);
+            
+            try {
+                // URL backend (folosește API_BASE_URL definit mai sus sau localhost pentru development)
+                const apiUrl = API_BASE_URL ? `${API_BASE_URL}/api/cronicus` : '/api/cronicus';
+                
+                // Trimite cererea către backend
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        question: question,
+                        mode: mode
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || `HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Ascunde loading
+                hideLoading();
+                
+                // Adaugă răspunsul în chat
+                addResponseToChat(data.answer, mode, data.metadata);
+                
+                // Resetează input-ul
+                document.getElementById('cronicus-question').value = '';
+                updateCharCount();
+                
+            } catch (error) {
+                console.error('Eroare CRONICUS:', error);
+                hideLoading();
+                
+                // Afișează eroare
+                const errorMessage = cL === 'RO'
+                    ? `Eroare: ${error.message}. Verifică conexiunea la internet și încearcă din nou.`
+                    : `Ошибка: ${error.message}. Проверьте подключение к интернету и попробуйте снова.`;
+                
+                showError(errorMessage);
+                
+                // Fallback: răspuns simulat
+                addSimulatedResponse(question, mode);
+            }
+        }
+        
+        // Afișează loading state
+        function showLoading(mode) {
+            const loadingEl = document.getElementById('cronicus-loading');
+            const detailsEl = document.getElementById('loading-details');
+            
+            if (mode === 'rapid') {
+                detailsEl.textContent = cL === 'RO'
+                    ? 'Se generează răspuns rapid (Mistral 7B)...'
+                    : 'Генерируется быстрый ответ (Mistral 7B)...';
+            } else {
+                detailsEl.textContent = cL === 'RO'
+                    ? 'Se analizează în detaliu (Llama 70B)...'
+                    : 'Анализируется детально (Llama 70B)...';
+            }
+            
+            loadingEl.classList.remove('hidden');
+            document.getElementById('ask-cronicus-btn').disabled = true;
+        }
+        
+        // Ascunde loading state
+        function hideLoading() {
+            document.getElementById('cronicus-loading').classList.add('hidden');
+            document.getElementById('ask-cronicus-btn').disabled = false;
+        }
+        
+        // Afișează eroare
+        function showError(message) {
+            const errorEl = document.getElementById('cronicus-error');
+            const messageEl = document.getElementById('error-message');
+            
+            messageEl.textContent = message;
+            errorEl.classList.remove('hidden');
+        }
+        
+        // Ascunde eroare
+        function hideError() {
+            document.getElementById('cronicus-error').classList.add('hidden');
+        }
+        
+        // Adaugă întrebarea în chat
+        function addQuestionToChat(question) {
+            const responsesContainer = document.getElementById('cronicus-responses');
+            
+            const questionHtml = `
+                <div class="flex gap-3 mb-6 justify-end">
+                    <div class="bg-blue-600 p-4 rounded-2xl rounded-tr-none max-w-xl">
+                        <p class="text-sm text-white">${escapeHtml(question)}</p>
+                    </div>
+                    <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+                        <i class="fa-solid fa-user text-white text-sm"></i>
+                    </div>
+                </div>
+            `;
+            
+            responsesContainer.insertAdjacentHTML('beforeend', questionHtml);
+            
+            // Scroll la ultimul mesaj
+            scrollToBottom();
+        }
+        
+        // Adaugă răspunsul în chat
+        function addResponseToChat(answer, mode, metadata) {
+            const responsesContainer = document.getElementById('cronicus-responses');
+            const modeIcon = mode === 'rapid' ? '⚡' : '🎓';
+            const modeColor = mode === 'rapid' ? 'blue' : 'purple';
+            
+            const responseHtml = `
+                <div class="flex gap-3 mb-6 chat-bubble">
+                    <div class="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center flex-shrink-0">
+                        <i class="fa-solid fa-robot text-${modeColor}-400 text-sm"></i>
+                    </div>
+                    <div class="bg-slate-800 p-4 rounded-2xl rounded-tl-none max-w-xl">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-xs font-bold text-${modeColor}-400">CRONICUS ${modeIcon}</span>
+                            <span class="text-xs text-slate-500">• ${metadata?.wordCount || '?'} ${cL === 'RO' ? 'cuvinte' : 'слов'}</span>
+                        </div>
+                        <div class="text-sm text-slate-300 whitespace-pre-line">${formatAnswer(answer)}</div>
+                        <div class="mt-3 pt-3 border-t border-slate-700">
+                            <p class="text-xs text-slate-500">
+                                ${mode === 'rapid'
+                                    ? (cL === 'RO' ? '⚡ Răspuns rapid generat cu Mistral 7B' : '⚡ Быстрый ответ сгенерирован Mistral 7B')
+                                    : (cL === 'RO' ? '🎓 Analiză detaliată cu Llama 70B' : '🎓 Детальный анализ с Llama 70B')}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            responsesContainer.insertAdjacentHTML('beforeend', responseHtml);
+            
+            // Scroll la ultimul mesaj
+            scrollToBottom();
+        }
+        
+        // Răspuns simulat pentru fallback
+        function addSimulatedResponse(question, mode) {
+            const simulatedResponses = {
+                rapid: {
+                    ro: `Excelentă întrebare despre "${question.substring(0, 30)}..."! În istorie, acest subiect este esențial pentru înțelegerea proceselor sociale și economice din perioada respectivă. Recomand să studiezi mai multe surse primare pentru o perspectivă completă.`,
+                    ru: `Отличный вопрос о "${question.substring(0, 30)}..."! В истории эта тема важна для понимания социальных и экономических процессов того периода. Рекомендую изучить больше первоисточников для полной перспективы.`
+                },
+                profund: {
+                    ro: `📊 **ANALIZĂ DETALIATĂ**\n\n**Context istoric:** Subiectul tău se încadrează în perioada...\n\n**Puncte cheie:**\n1. Factorul economic\n2. Influența socială\n3. Consecințe politice\n\n**Evaluare BAC estimativă:** 12/15 puncte\n\n**Recomandări:**\n• Citește lucrările autorului X\n• Analizează documentele primare Y\n• Compară cu cazuri similare din istoria universală`,
+                    ru: `📊 **ДЕТАЛЬНЫЙ АНАЛИЗ**\n\n**Исторический контекст:** Ваша тема относится к периоду...\n\n**Ключевые моменты:**\n1. Экономический фактор\n2. Социальное влияние\n3. Политические последствия\n\n**Оценка BAC ориентировочно:** 12/15 баллов\n\n**Рекомендации:**\n• Прочитайте работы автора X\n• Проанализируйте первичные документы Y\n• Сравните с аналогичными случаями из всемирной истории`
+                }
+            };
+            
+            const response = simulatedResponses[mode][cL === 'RO' ? 'ro' : 'ru'];
+            addResponseToChat(response, mode, { wordCount: response.split(/\s+/).length });
+        }
+        
+        // Formatează răspunsul (convertește markdown simplu)
+        function formatAnswer(text) {
+            // Convertire markdown simplu
+            return text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/✅/g, '✅ ')
+                .replace(/⚠️/g, '⚠️ ')
+                .replace(/\n/g, '<br>');
+        }
+        
+        // Escape HTML pentru securitate
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Scroll la ultimul mesaj
+        function scrollToBottom() {
+            const chatContainer = document.getElementById('cronicus-chat');
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        
+        // Șterge conversația
+        function clearCronicusChat() {
+            if (confirm(cL === 'RO' ? 'Sigur ștergi conversația?' : 'Точно удалить разговор?')) {
+                document.getElementById('cronicus-responses').innerHTML = '';
+                showNotification(cL === 'RO' ? 'Conversație ștearsă!' : 'Разговор удален!');
+            }
+        }
+        
         // Aplicare traduceri la încărcare
         window.addEventListener('DOMContentLoaded', () => {
             applyTranslations();
+            initCronicus();
         });
-
+        
         // Drag & Drop pentru upload zone
         document.addEventListener('DOMContentLoaded', () => {
             const uploadZones = document.querySelectorAll('.upload-zone');
@@ -1462,158 +1806,6 @@
                 });
             });
         });
-        // ============================================
-// MENTOR CHAT - CONECTAT LA BACKEND
-// ============================================
-async function sendMentorMessage() {
-    const input = document.getElementById('mentor-input');
-    const chatContainer = document.getElementById('mentor-chat');
-    const message = input.value.trim();
-
-    if (!message) return;
-
-    // 1. Afișează mesajul utilizatorului
-    appendMentorMessage(message, 'user');
-    input.value = '';
-
-    // 2. Indicator "Cronicus scrie..."
-    const loadingId = 'loading-' + Date.now();
-    appendMentorMessage('Cronicus scrie...', 'ai', loadingId);
-
-    try {
-        console.log('💬 Trimit către /chat:', message);
-
-        // 3. Apel backend (folosim exact ruta testată cu succes)
-        const response = await fetch('/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userMessage: message }) // Format compatibil cu worker-ul tău
-        });
-
-        console.log('📡 Chat response status:', response.status);
-        const data = await response.json();
-        console.log('📦 Chat response data:', data);
-
-        // 4. Șterge loading și afișează răspunsul
-        const loadingEl = document.getElementById(loadingId);
-        if (loadingEl) loadingEl.remove();
-
-        const aiText = data.reply || data.response || data.message || 'Fără răspuns AI.';
-        appendMentorMessage(aiText, 'ai');
-
-    } catch (error) {
-        console.error('❌ Chat error:', error);
-        const loadingEl = document.getElementById(loadingId);
-        if (loadingEl) loadingEl.remove();
-        appendMentorMessage('⚠️ Eroare conexiune. Încearcă din nou.', 'ai');
-    }
-}
-
-// Helper pentru adăugare mesaje
-function appendMentorMessage(text, sender, elementId = null) {
-    const chatContainer = document.getElementById('mentor-chat');
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'flex gap-4 mb-4 chat-bubble';
-    if (elementId) messageDiv.id = elementId;
-
-    if (sender === 'user') {
-        messageDiv.classList.add('justify-end');
-        messageDiv.innerHTML = `
-            <div class="bg-blue-600 text-white p-4 rounded-2xl rounded-tr-none text-sm max-w-xl">
-                ${text}
-            </div>
-        `;
-    } else {
-        messageDiv.innerHTML = `
-            <div class="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center flex-shrink-0">
-                <i class="fa-solid fa-robot text-blue-400"></i>
-            </div>
-            <div class="bg-slate-800 p-4 rounded-2xl rounded-tl-none text-sm text-slate-300 max-w-xl">
-                ${text}
-            </div>
-        `;
-    }
-
-    chatContainer.appendChild(messageDiv);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
-}
-        // ============================================
-// MENTOR CHAT - CONECTAT LA BACKEND
-// ============================================
-async function sendMentorMessage() {
-    const input = document.getElementById('mentor-input');
-    const chatContainer = document.getElementById('mentor-chat');
-    const message = input.value.trim();
-
-    if (!message) return;
-
-    // 1. Afișează mesajul utilizatorului
-    appendMentorMessage(message, 'user');
-    input.value = '';
-
-    // 2. Indicator "Cronicus scrie..."
-    const loadingId = 'loading-' + Date.now();
-    appendMentorMessage('Cronicus scrie...', 'ai', loadingId);
-
-    try {
-        console.log('💬 Trimit către /chat:', message);
-
-        // 3. Apel backend (folosim exact ruta testată cu succes)
-        const response = await fetch('/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userMessage: message })
-        });
-
-        console.log('📡 Chat response status:', response.status);
-        const data = await response.json();
-        console.log('📦 Chat response data:', data);
-
-        // 4. Șterge loading și afișează răspunsul
-        const loadingEl = document.getElementById(loadingId);
-        if (loadingEl) loadingEl.remove();
-
-        const aiText = data.reply || data.response || data.message || 'Fără răspuns AI.';
-        appendMentorMessage(aiText, 'ai');
-
-    } catch (error) {
-        console.error('❌ Chat error:', error);
-        const loadingEl = document.getElementById(loadingId);
-        if (loadingEl) loadingEl.remove();
-        appendMentorMessage('⚠️ Eroare conexiune. Încearcă din nou.', 'ai');
-    }
-}
-
-// Helper pentru adăugare mesaje
-function appendMentorMessage(text, sender, elementId = null) {
-    const chatContainer = document.getElementById('mentor-chat');
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'flex gap-4 mb-4 chat-bubble';
-    if (elementId) messageDiv.id = elementId;
-
-    if (sender === 'user') {
-        messageDiv.classList.add('justify-end');
-        messageDiv.innerHTML = `
-            <div class="bg-blue-600 text-white p-4 rounded-2xl rounded-tr-none text-sm max-w-xl">
-                ${text}
-            </div>
-        `;
-    } else {
-        messageDiv.innerHTML = `
-            <div class="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center flex-shrink-0">
-                <i class="fa-solid fa-robot text-blue-400"></i>
-            </div>
-            <div class="bg-slate-800 p-4 rounded-2xl rounded-tl-none text-sm text-slate-300 max-w-xl">
-                ${text}
-            </div>
-        `;
-    }
-
-    chatContainer.appendChild(messageDiv);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
-}
-
     </script>
 </body>
 </html>
-
