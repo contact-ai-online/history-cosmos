@@ -1,185 +1,154 @@
-/**
- * HISTORY-COSMOS WORKER v3.0 - MONOLITIC SAFE
- * Elimină dependențele externe, păstrează logica bună de rutare
- */
-
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-    const path = url.pathname.endsWith('/') && url.pathname.length > 1 
-                 ? url.pathname.slice(0, -1) 
-                 : url.pathname;
-
-    // CORS universal
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    };
-
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
-    }
-
-    try {
-      // ==========================================
-      // LOGIN: Acceptă ambele rute pentru siguranță
-      // ==========================================
-      if ((path === '/login' || path === '/api/login') && request.method === 'POST') {
-        const { username, password } = await request.json();
-
-        // 🔑 BACKDOOR PENTRU TESTARE (Elimină blocajul D1)
-        if (password === 'start') {
-          return jsonResponse({
-            success: true,
-            user: { 
-              id: 'debug',
-              name: username || 'Ruslan', 
-              role: 'teacher',
-              fullname: 'Debug User'
-            }
-          }, corsHeaders);
-        }
-
-        // D1 Logic (doar dacă backdoor-ul nu funcționează)
-        if (!env.DB) {
-          return jsonResponse({
-            error: 'Baza de date D1 nu este conectată!'
-          }, corsHeaders, 500);
-        }
-        
-        const user = await env.DB.prepare(
-          "SELECT * FROM users WHERE username = ? AND password = ?"
-        ).bind(username, password).first();
-
-        if (!user) {
-          return jsonResponse({
-            error: 'Utilizator sau parolă greșită!'
-          }, corsHeaders, 401);
-        }
-
-        return jsonResponse({ success: true, user }, corsHeaders);
-      }
-
-      // ==========================================
-      // CHAT: Acceptă /chat și /api/chat
-      // ==========================================
-      if (request.method === 'POST' && (path === '/chat' || path === '/api/chat')) {
-        const body = await request.json().catch(() => ({}));
-        
-        // INPUT UNIVERSAL
-        const userMessage = body.message || body.userMessage || body.prompt || body.text;
-
-        if (!userMessage) {
-          return jsonResponse({ reply: 'Mesaj gol.' }, corsHeaders);
-        }
-
-        // TEST RAPID
-        if (userMessage.toUpperCase() === 'TEST') {
-          return jsonResponse({ 
-            reply: '✅ CONEXIUNE REUȘITĂ! Worker funcționează perfect!',
-            response: '✅ CONEXIUNE REUȘITĂ! Worker funcționează perfect!'
-          }, corsHeaders);
-        }
-
-        // Verificare API Key
-        const apiKey = env.DEEPSEEK_API_KEY || env.MISTRAL_API_KEY || env.AI_API_KEY;
-        if (!apiKey) {
-          return jsonResponse({
-            reply: '⚠️ Eroare: Setează DEEPSEEK_API_KEY în Cloudflare Dashboard'
-          }, corsHeaders, 500);
-        }
-
-        // Apel AI cu fallback
-        const aiResponse = await callAI(apiKey, userMessage);
-        return jsonResponse(aiResponse, corsHeaders);
-      }
-
-      // ==========================================
-      // REGISTER: Placeholder safe
-      // ==========================================
-      if ((path === '/register' || path === '/api/register') && request.method === 'POST') {
-        return jsonResponse({
-          success: false,
-          error: 'Înregistrarea va fi activată după repararea login-ului'
-        }, corsHeaders);
-      }
-
-      // ==========================================
-      // QUIZ: Placeholder safe (nu crapă Worker-ul)
-      // ==========================================
-      if (path.includes('quiz') || path.includes('score') || path.includes('stats')) {
-        return jsonResponse({
-          note: 'Funcția Quiz va fi activată după stabilizarea sistemului'
-        }, corsHeaders);
-      }
-
-    } catch (error) {
-      console.error('Worker error:', error);
-      return jsonResponse({
-        error: 'Server error: ' + error.message
-      }, corsHeaders, 500);
-    }
-
-    // Fallback pentru fișiere statice
-    return env.ASSETS.fetch(request);
-  }
+// CRONICUS CONFIGURATION
+const CRONICUS_MODELS = {
+  rapid: '@cf/mistral/mistral-7b-instruct-v0.1',
+  profund: '@cf/meta/llama-3.1-70b-instruct'
 };
 
-// ==========================================
-// FUNCȚII HELPER (Toate în același fișier)
-// ==========================================
+const CRONICUS_RAPID_PROMPT = `Tu ești CRONICUS, mentorul istoric pentru elevii claselor X-XII din Republica Moldova.
 
-function jsonResponse(data, corsHeaders, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      'Content-Type': 'application/json',
-      ...corsHeaders
+ACOPERIRE CURRICULUM COMPLETĂ:
+📚 Istoria Românilor (Preistorie → Contemporan) + Istoria Universală
+
+MOD RAPID - REGULI:
+✅ CONCIS: 120-200 cuvinte maximum
+✅ DIRECT: Răspunde în primele 2 propoziții  
+✅ STRUCTURAT: 1) Definiție/fapt central 2) Context rapid 3) Legătură cu programa
+✅ ÎNCURAJATOR: "Excelentă întrebare!", "Foarte bine!"
+
+INTERZIS: Răspunsuri >250 cuvinte, termeni fără explicație
+LIMBA: Română (adaptează la rusă dacă elevul scrie în rusă)`;
+
+const CRONICUS_PROFUND_PROMPT = `Tu ești CRONICUS, expert în Istoria Românilor și Universală pentru pregătirea BAC (clasele X-XII, Republica Moldova).
+
+CÂND EVALUEZI UN ESEU BAC:
+📊 **NOTA ESTIMATIVĂ: X/15 puncte**
+✅ **PUNCTE FORTE:** [3 aspecte pozitive cu exemple din text]
+⚠️ **DE ÎMBUNĂTĂȚIT:** [3 probleme + soluții concrete]
+💡 **REFORMULARE ACADEMICĂ:** [Rescrie 1-2 propoziții ale elevului]
+🎯 **STRATEGII PENTRU NOTA 10:** [3 recomandări specifice]
+
+CÂND RĂSPUNZI LA ÎNTREBĂRI COMPLEXE:
+1. Context istoric amplu 2. Analiză multicauzală 3. Dezvoltarea procesului
+4. Consecințe multiple 5. Semnificația istorică 6. Conexiuni româno-universale
+
+STIL: Academic dar accesibil, terminologie precisă, perspective multiple`;
+
+// Hono.js Application
+import { Hono } from 'hono';
+
+const app = new Hono();
+
+// CORS middleware
+app.use('*', async (c, next) => {
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (c.req.method === 'OPTIONS') {
+    return c.text('', 204);
+  }
+  await next();
+});
+
+// Health check endpoint
+app.get('/', (c) => {
+  return c.json({
+    service: 'CRONICUS API',
+    version: '1.0.0',
+    description: 'Sistem AI pentru istorie - Republica Moldova',
+    endpoints: {
+      cronicus: 'POST /api/cronicus',
+      health: 'GET /health'
     }
   });
-}
+});
 
-async function callAI(apiKey, message) {
-  const systemPrompt = "Ești Cronicus, profesor de istorie. Răspunde scurt și clar.";
-  
+app.get('/health', (c) => {
+  return c.json({ status: 'healthy', timestamp: new Date().toISOString() });
+});
+
+// CRONICUS endpoint
+app.post('/api/cronicus', async (c) => {
   try {
-    // Încercăm DeepSeek
-    const response = await fetch('https://api.deepseek.com/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: message }
-        ]
-      })
-    });
+    // Validare input
+    const body = await c.req.json();
+    const { question, mode = 'rapid' } = body;
 
-    if (!response.ok) {
-      throw new Error(`DeepSeek API Error: ${response.status}`);
+    // Validare întrebare
+    if (!question || typeof question !== 'string') {
+      return c.json({ 
+        error: 'Întrebarea este obligatorie și trebuie să fie text' 
+      }, 400);
     }
 
-    const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || 'Fără răspuns AI';
+    if (question.trim().length < 5) {
+      return c.json({ 
+        error: 'Întrebarea trebuie să aibă minim 5 caractere' 
+      }, 400);
+    }
 
-    // OUTPUT UNIVERSAL (toate formatele)
-    return {
-      reply: text,
-      response: text,
-      message: text,
-      answer: text
-    };
+    // Validare mod
+    const validModes = ['rapid', 'profund'];
+    if (!validModes.includes(mode)) {
+      return c.json({ 
+        error: 'Mod invalid. Alegeți "rapid" sau "profund"' 
+      }, 400);
+    }
+
+    // Selectare model și prompt
+    const model = CRONICUS_MODELS[mode];
+    const systemPrompt = mode === 'rapid' 
+      ? CRONICUS_RAPID_PROMPT 
+      : CRONICUS_PROFUND_PROMPT;
+
+    // Construire mesaj pentru AI
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: question }
+    ];
+
+    // Apel Cloudflare Workers AI
+    const aiResponse = await c.env.AI.run(model, { messages });
+
+    // Procesare răspuns
+    const responseText = aiResponse.response || aiResponse;
+
+    // Structurare răspuns JSON
+    return c.json({
+      success: true,
+      mode: mode,
+      model: model,
+      question: question,
+      answer: responseText,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        wordCount: responseText.split(/\s+/).length,
+        modeDescription: mode === 'rapid' 
+          ? 'Răspuns rapid (120-200 cuvinte)' 
+          : 'Analiză profundă + evaluare eseuri BAC'
+      }
+    });
 
   } catch (error) {
-    // Fallback pentru erori AI
-    return {
-      reply: `⚠️ AI temporar indisponibil. Eroare: ${error.message}. Te rog reîncearcă în câteva secunde.`,
-      response: 'Eroare AI'
-    };
+    console.error('Eroare CRONICUS:', error);
+
+    // Error handling specific
+    if (error.message.includes('AI')) {
+      return c.json({ 
+        error: 'Eroare serviciu AI. Vă rugăm încercați mai târziu.',
+        details: error.message 
+      }, 503);
+    }
+
+    return c.json({ 
+      error: 'Eroare internă server',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    }, 500);
   }
-}
+});
+
+// Fallback pentru rute necunoscute
+app.all('*', (c) => {
+  return c.json({ error: 'Endpoint negăsit' }, 404);
+});
+
+export default app;
