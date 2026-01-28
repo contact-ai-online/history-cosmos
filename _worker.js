@@ -19,7 +19,7 @@ app.post('/api/cronicus', async (c) => {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${c.env.MISTRAL_API_KEY}` },
         body: JSON.stringify({
           model: 'open-mistral-7b',
-          messages: [{ role: 'system', content: 'Ești CRONICUS, mentor rapid.' }, { role: 'user', content: question }],
+          messages: [{ role: 'system', content: 'Ești CRONICUS, mentor rapid. Răspunsuri scurte (1359-1991).' }, { role: 'user', content: question }],
           max_tokens: 300
         })
       });
@@ -31,7 +31,7 @@ app.post('/api/cronicus', async (c) => {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${c.env.DEEPSEEK_API_KEY}` },
         body: JSON.stringify({
           model: 'deepseek-chat',
-          messages: [{ role: 'system', content: 'Ești CRONICUS, expert istorie.' }, { role: 'user', content: question }],
+          messages: [{ role: 'system', content: 'Ești CRONICUS, expert istorie pentru evaluare BAC. Analizează profund și oferă răspunsuri structurate.' }, { role: 'user', content: question }],
           max_tokens: 2000
         })
       });
@@ -45,28 +45,31 @@ app.post('/api/cronicus', async (c) => {
 
 app.get('/api/health', (c) => c.json({ status: 'ok' }));
 
-// Mock Login Endpoint (Replace with your logic later)
+// Login Endpoint with KV password verification
 app.post('/login', async (c) => {
   try {
     const { username, password } = await c.req.json();
     
-    // Mock authentication - accept any non-empty credentials
     if (!username || !password) {
       return c.json({ error: 'Username și parolă sunt obligatorii' }, 400);
     }
     
-    // Determine role based on username (mock logic)
-    const isTeacher = username.toLowerCase().includes('prof') || username.toLowerCase().includes('teacher');
-    const role = isTeacher ? 'teacher' : 'student';
+    // Get stored password from KV with fallback to 'Ruslan2026'
+    const storedPassword = await c.env.KV.get('ADMIN_PASSWORD') || 'Ruslan2026';
+    
+    // Verify password (for Ruslan only - teachers need password verification)
+    const isRuslan = username.toLowerCase() === 'ruslan';
+    if (isRuslan && password !== storedPassword) {
+      return c.json({ error: 'Parolă incorectă' }, 401);
+    }
+    
+    // Determine role based on username - Ruslan is teacher, others are students
+    const role = isRuslan ? 'teacher' : 'student';
     
     return c.json({
       success: true,
-      message: "Autentificare reușită",
       user: {
         username: username,
-        fullname: username === 'profesor' ? 'Profesor Demo' :
-                  username === 'elev' ? 'Elev Demo' :
-                  username.charAt(0).toUpperCase() + username.slice(1),
         role: role
       }
     });
@@ -95,6 +98,40 @@ app.post('/register', async (c) => {
     });
   } catch (err) {
     return c.json({ error: 'Eroare la procesarea cererii', details: err.message }, 500);
+  }
+});
+
+// Change Password Endpoint (Teacher only)
+app.post('/api/change-password', async (c) => {
+  try {
+    const { username, currentPassword, newPassword } = await c.req.json();
+    
+    if (!username || !currentPassword || !newPassword) {
+      return c.json({ error: 'Toate câmpurile sunt obligatorii' }, 400);
+    }
+    
+    // Verify user is Ruslan (teacher)
+    if (username.toLowerCase() !== 'ruslan') {
+      return c.json({ error: 'Doar profesorul poate schimba parola' }, 403);
+    }
+    
+    // Get stored password from KV with fallback
+    const storedPassword = await c.env.KV.get('ADMIN_PASSWORD') || 'Ruslan2026';
+    
+    // Verify current password
+    if (currentPassword !== storedPassword) {
+      return c.json({ error: 'Parola curentă este incorectă' }, 401);
+    }
+    
+    // Save new password to KV
+    await c.env.KV.put('ADMIN_PASSWORD', newPassword);
+    
+    return c.json({
+      success: true,
+      message: 'Parola a fost schimbată cu succes!'
+    });
+  } catch (err) {
+    return c.json({ error: 'Eroare la schimbarea parolei', details: err.message }, 500);
   }
 });
 
