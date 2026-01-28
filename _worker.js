@@ -45,6 +45,11 @@ app.post('/api/cronicus', async (c) => {
 
 app.get('/api/health', (c) => c.json({ status: 'ok' }));
 
+// Mock Login Endpoint (Replace with your logic later)
+app.post('/login', async (c) => {
+  return c.json({ success: true, message: "Autentificare reușită" });
+});
+
 // 🛑 IMPORTANT: FALLBACK FOR PAGES
 // Acest cod spune: "Dacă nu e /api, lasă Cloudflare să servească fișierele statice (index.html)"
 app.all('/*', async (c) => {
