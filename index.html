@@ -277,37 +277,42 @@
                     </div>
 
                     <!-- MENTOR AI -->
-                    <!-- ZONĂ MESAJE MENTOR -->
-<div id="mentor-chat" class="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 mb-4 flex-grow overflow-y-auto">
-    <div class="flex gap-4">
-        <div class="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center">
-            <i class="fa-solid fa-robot text-blue-400"></i>
-        </div>
-        <div class="bg-slate-800 p-4 rounded-2xl rounded-tl-none text-sm text-slate-300 max-w-xl" data-i18n="mentor_greeting">
-            Salut! Sunt Cronicus. Discutăm despre istorie?
+<div id="v-mentor" class="view-content flex flex-col h-full">
+    
+    <!-- ZONĂ MESAJE MENTOR -->
+    <div id="mentor-chat" class="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 mb-4 flex-grow overflow-y-auto">
+        <div class="flex gap-4">
+            <div class="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center">
+                <i class="fa-solid fa-robot text-blue-400"></i>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-2xl rounded-tl-none text-sm text-slate-300 max-w-xl" data-i18n="mentor_greeting">
+                Salut! Sunt Cronicus. Discutăm despre istorie?
+            </div>
         </div>
     </div>
+
+    <!-- ZONA INPUT MENTOR - CONECTATĂ -->
+    <div class="flex gap-2">
+        <button class="w-12 h-12 bg-slate-800 rounded-xl text-slate-400 hover:text-red-500">
+            <i class="fa-solid fa-microphone"></i>
+        </button>
+        <input 
+            id="mentor-input"
+            type="text"
+            class="flex-grow bg-slate-800 border border-slate-700 rounded-xl px-4 text-sm text-white outline-none"
+            placeholder="Scrie..." 
+            data-i18n-placeholder="write"
+            onkeypress="if(event.key==='Enter') sendMentorMessage()"
+        >
+        <button 
+            class="w-12 h-12 bg-blue-600 rounded-xl text-white"
+            onclick="sendMentorMessage()"
+        >
+            <i class="fa-solid fa-paper-plane"></i>
+        </button>
+    </div>
 </div>
-                        <!-- ZONA INPUT MENTOR - CONECTATĂ -->
-<div class="flex gap-2">
-    <button class="w-12 h-12 bg-slate-800 rounded-xl text-slate-400 hover:text-red-500">
-        <i class="fa-solid fa-microphone"></i>
-    </button>
-    <input 
-        id="mentor-input"
-        type="text"
-        class="flex-grow bg-slate-800 border border-slate-700 rounded-xl px-4 text-sm text-white outline-none"
-        placeholder="Scrie..." 
-        data-i18n-placeholder="write"
-        onkeypress="if(event.key==='Enter') sendMentorMessage()"
-    >
-    <button 
-        class="w-12 h-12 bg-blue-600 rounded-xl text-white"
-        onclick="sendMentorMessage()"
-    >
-        <i class="fa-solid fa-paper-plane"></i>
-    </button>
-</div>
+
 
                     <!-- MANUAL -->
                     <div id="v-manual" class="view-content hidden h-full flex-col">
@@ -1532,6 +1537,82 @@ function appendMentorMessage(text, sender, elementId = null) {
     chatContainer.appendChild(messageDiv);
     chatContainer.scrollTop = chatContainer.scrollHeight;
 }
+        // ============================================
+// MENTOR CHAT - CONECTAT LA BACKEND
+// ============================================
+async function sendMentorMessage() {
+    const input = document.getElementById('mentor-input');
+    const chatContainer = document.getElementById('mentor-chat');
+    const message = input.value.trim();
+
+    if (!message) return;
+
+    // 1. Afișează mesajul utilizatorului
+    appendMentorMessage(message, 'user');
+    input.value = '';
+
+    // 2. Indicator "Cronicus scrie..."
+    const loadingId = 'loading-' + Date.now();
+    appendMentorMessage('Cronicus scrie...', 'ai', loadingId);
+
+    try {
+        console.log('💬 Trimit către /chat:', message);
+
+        // 3. Apel backend (folosim exact ruta testată cu succes)
+        const response = await fetch('/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userMessage: message })
+        });
+
+        console.log('📡 Chat response status:', response.status);
+        const data = await response.json();
+        console.log('📦 Chat response data:', data);
+
+        // 4. Șterge loading și afișează răspunsul
+        const loadingEl = document.getElementById(loadingId);
+        if (loadingEl) loadingEl.remove();
+
+        const aiText = data.reply || data.response || data.message || 'Fără răspuns AI.';
+        appendMentorMessage(aiText, 'ai');
+
+    } catch (error) {
+        console.error('❌ Chat error:', error);
+        const loadingEl = document.getElementById(loadingId);
+        if (loadingEl) loadingEl.remove();
+        appendMentorMessage('⚠️ Eroare conexiune. Încearcă din nou.', 'ai');
+    }
+}
+
+// Helper pentru adăugare mesaje
+function appendMentorMessage(text, sender, elementId = null) {
+    const chatContainer = document.getElementById('mentor-chat');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'flex gap-4 mb-4 chat-bubble';
+    if (elementId) messageDiv.id = elementId;
+
+    if (sender === 'user') {
+        messageDiv.classList.add('justify-end');
+        messageDiv.innerHTML = `
+            <div class="bg-blue-600 text-white p-4 rounded-2xl rounded-tr-none text-sm max-w-xl">
+                ${text}
+            </div>
+        `;
+    } else {
+        messageDiv.innerHTML = `
+            <div class="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center flex-shrink-0">
+                <i class="fa-solid fa-robot text-blue-400"></i>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-2xl rounded-tl-none text-sm text-slate-300 max-w-xl">
+                ${text}
+            </div>
+        `;
+    }
+
+    chatContainer.appendChild(messageDiv);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
     </script>
 </body>
 </html>
