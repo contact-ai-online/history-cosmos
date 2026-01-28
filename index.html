@@ -819,14 +819,45 @@
         }
 
         function nav(id) {
-            document.querySelectorAll('.view-content').forEach(v => v.style.display = 'none');
-            const target = document.getElementById('v-' + id);
-            target.style.display = (id === 'mentor' || id === 'manual' || id === 'admin' || id === 'homework' || id === 'uploads' || id === 'online' || id === 'quiz') ? 'flex' : 'block';
-            
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            const btn = document.getElementById('t-' + id);
-            if(btn) btn.classList.add('active');
+    console.log('🧭 Navigare către:', id);
+    
+    // 1. Ascunde toate view-urile (cu verificare de siguranță)
+    document.querySelectorAll('.view-content').forEach(v => {
+        if (v && v.style) {
+            v.style.display = 'none';
         }
+    });
+    
+    // 2. Dezactivează toate tab-urile (cu verificare de siguranță)  
+    document.querySelectorAll('.tab-btn').forEach(b => {
+        if (b && b.classList) {
+            b.classList.remove('active');
+        }
+    });
+
+    // 3. Găsește elementele țintă
+    const targetId = 'v-' + id;
+    const target = document.getElementById(targetId);
+    const btn = document.getElementById('t-' + id);
+
+    // 4. Afișează view-ul selectat (DOAR dacă există!)
+    if (target) {
+        const flexViews = ['mentor', 'manual', 'admin', 'homework', 'uploads', 'online', 'quiz'];
+        target.style.display = flexViews.includes(id) ? 'flex' : 'block';
+        console.log('✅ View afișat:', targetId);
+    } else {
+        console.warn('⚠️ View nu există:', targetId);
+        return; // Oprește execuția pentru a preveni alte erori
+    }
+    
+    // 5. Activează tab-ul (DOAR dacă există!)
+    if (btn) {
+        btn.classList.add('active');
+        console.log('✅ Tab activat:', 't-' + id);
+    } else {
+        console.warn('⚠️ Tab button nu există:', 't-' + id);
+    }
+}
 
         function pubTopic() {
             const t = document.getElementById('topic-edit').value;
