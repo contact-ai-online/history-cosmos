@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>History Legends | v33.0 ENHANCED</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com?config=inline"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
@@ -154,15 +154,15 @@
             <h1 class="text-3xl font-bold text-white mb-2">History Cosmos</h1>
             <p class="text-xs text-slate-400 mb-8 uppercase tracking-widest">Sistem Securizat D1</p>
             
-            <div class="space-y-4">
-                <input type="text" id="user-input" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white outline-none focus:border-blue-500" placeholder="Utilizator">
-                <input type="password" id="pass-input" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white outline-none focus:border-blue-500" placeholder="Parolă">
+            <form id="login-form" onsubmit="return false;" class="space-y-4">
+                <input type="text" id="user-input" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white outline-none focus:border-blue-500" placeholder="Utilizator" required>
+                <input type="password" id="pass-input" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white outline-none focus:border-blue-500" placeholder="Parolă" required>
                 
                 <div class="flex gap-2">
-                    <button onclick="handleAuth('login')" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition border-b-4 border-blue-800 active:border-b-0 active:translate-y-1">INTRĂ</button>
-                    <button onclick="handleAuth('register')" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition border-b-4 border-green-800 active:border-b-0 active:translate-y-1">CONT NOU</button>
+                    <button type="button" onclick="handleAuth('login')" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition border-b-4 border-blue-800 active:border-b-0 active:translate-y-1">INTRĂ</button>
+                    <button type="button" onclick="handleAuth('register')" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition border-b-4 border-green-800 active:border-b-0 active:translate-y-1">CONT NOU</button>
                 </div>
-            </div>
+            </form>
 
             <p id="login-msg" class="text-xs text-red-400 mt-4 h-4"></p>
         </div>
@@ -186,8 +186,11 @@
                 <div class="flex items-center gap-2 text-yellow-400 border-r border-slate-700 pr-4 editable" onclick="editTxt(this)">
                     <i class="fa-solid fa-star"></i><span class="text-xs font-bold uppercase">IMPORTANT</span>
                 </div>
-                <div class="flex items-center gap-2 text-blue-400 editable" onclick="editTxt(this)">
+                <div class="flex items-center gap-2 text-blue-400 border-r border-slate-700 pr-4 editable" onclick="editTxt(this)">
                     <i class="fa-solid fa-calendar"></i><span class="text-xs font-bold uppercase">AZI: 3 LECȚII</span>
+                </div>
+                <div class="flex items-center gap-2 text-green-400 cursor-pointer" onclick="showPasswordSettings()">
+                    <i class="fa-solid fa-lock"></i><span class="text-xs font-bold uppercase">SETĂRI PAROLĂ</span>
                 </div>
             </div>
 
@@ -306,7 +309,7 @@
                                             <i class="fa-solid fa-graduation-cap text-white"></i>
                                         </div>
                                         <h3 class="font-bold text-white mb-1">🎓 MOD PROFUND</h3>
-                                        <p class="text-xs text-slate-400">Analiză detaliată • Llama 70B</p>
+                                        <p class="text-xs text-slate-400">Analiză detaliată • DeepSeek V3 (Evaluare BAC)</p>
                                         <p class="text-xs text-slate-300 mt-2">Evaluare eseuri BAC + analiză multicauzală</p>
                                     </div>
                                 </label>
@@ -659,6 +662,37 @@
         </div>
     </div>
 
+    <!-- MODAL SETĂRI PAROLĂ -->
+    <div id="modal-password" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-[2000] modal-overlay">
+        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 w-96">
+            <h3 class="text-white font-bold mb-4 text-lg">🔐 Setări Parolă Admin</h3>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">Parola curentă</label>
+                    <input type="password" id="current-password" class="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white text-sm" placeholder="Introdu parola curentă">
+                </div>
+                
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">Parola nouă</label>
+                    <input type="password" id="new-password" class="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white text-sm" placeholder="Introdu parola nouă">
+                </div>
+                
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">Confirmă parola nouă</label>
+                    <input type="password" id="confirm-password" class="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white text-sm" placeholder="Confirmă parola nouă">
+                </div>
+            </div>
+            
+            <div class="mt-6 flex gap-2">
+                <button onclick="closePasswordModal()" class="flex-1 bg-slate-700 text-white text-sm py-3 rounded font-medium">Anulează</button>
+                <button onclick="changePassword()" class="flex-1 bg-green-600 text-white text-sm py-3 rounded font-bold">Salvează Parola</button>
+            </div>
+            
+            <div id="password-message" class="mt-4 text-sm text-center hidden"></div>
+        </div>
+    </div>
+
     <script>
         // ============================================
         // TRADUCERI BILINGV RO/RU
@@ -972,6 +1006,95 @@
         function openModal() { document.getElementById('modal-add').style.display = 'flex'; }
         function closeModal() { document.getElementById('modal-add').style.display = 'none'; }
         
+        // Password Settings Functions
+        function showPasswordSettings() {
+            document.getElementById('modal-password').style.display = 'flex';
+            // Clear previous inputs and messages
+            document.getElementById('current-password').value = '';
+            document.getElementById('new-password').value = '';
+            document.getElementById('confirm-password').value = '';
+            document.getElementById('password-message').classList.add('hidden');
+            document.getElementById('password-message').textContent = '';
+        }
+        
+        function closePasswordModal() {
+            document.getElementById('modal-password').style.display = 'none';
+        }
+        
+        async function changePassword() {
+            const currentPass = document.getElementById('current-password').value;
+            const newPass = document.getElementById('new-password').value;
+            const confirmPass = document.getElementById('confirm-password').value;
+            const messageEl = document.getElementById('password-message');
+            
+            // Validation
+            if (!currentPass || !newPass || !confirmPass) {
+                showMessage(messageEl, 'Toate câmpurile sunt obligatorii!', 'error');
+                return;
+            }
+            
+            if (newPass !== confirmPass) {
+                showMessage(messageEl, 'Parolele noi nu se potrivesc!', 'error');
+                return;
+            }
+            
+            if (newPass.length < 6) {
+                showMessage(messageEl, 'Parola nouă trebuie să aibă minim 6 caractere!', 'error');
+                return;
+            }
+            
+            try {
+                // Get current user from localStorage
+                const userSession = JSON.parse(localStorage.getItem('userSession') || '{}');
+                const username = userSession.username || 'ruslan';
+                
+                // Send request to change password
+                const response = await fetch('/api/change-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: username,
+                        currentPassword: currentPass,
+                        newPassword: newPass
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showMessage(messageEl, data.message || 'Parola a fost schimbată cu succes!', 'success');
+                    // Clear inputs after successful change
+                    document.getElementById('current-password').value = '';
+                    document.getElementById('new-password').value = '';
+                    document.getElementById('confirm-password').value = '';
+                    
+                    // Close modal after 2 seconds
+                    setTimeout(() => {
+                        closePasswordModal();
+                    }, 2000);
+                } else {
+                    showMessage(messageEl, data.error || 'Eroare la schimbarea parolei', 'error');
+                }
+            } catch (err) {
+                console.error('Password change error:', err);
+                showMessage(messageEl, 'Eroare de conexiune la server', 'error');
+            }
+        }
+        
+        function showMessage(element, text, type) {
+            element.textContent = text;
+            element.classList.remove('hidden');
+            element.className = 'mt-4 text-sm text-center';
+            
+            if (type === 'success') {
+                element.classList.add('text-green-400');
+                element.classList.remove('text-red-400');
+            } else {
+                element.classList.add('text-red-400');
+                element.classList.remove('text-green-400');
+            }
+        }
+          
         function addStudent() {
             const n = document.getElementById('new-name').value;
             if(n) {
@@ -1651,8 +1774,8 @@
                     : 'Генерируется быстрый ответ (Mistral 7B)...';
             } else {
                 detailsEl.textContent = cL === 'RO'
-                    ? 'Se analizează în detaliu (Llama 70B)...'
-                    : 'Анализируется детально (Llama 70B)...';
+                    ? 'Se analizează în detaliu (DeepSeek V3)...'
+                    : 'Анализируется детально (DeepSeek V3)...';
             }
             
             loadingEl.classList.remove('hidden');
@@ -1721,7 +1844,7 @@
                             <p class="text-xs text-slate-500">
                                 ${mode === 'rapid'
                                     ? (cL === 'RO' ? '⚡ Răspuns rapid generat cu Mistral 7B' : '⚡ Быстрый ответ сгенерирован Mistral 7B')
-                                    : (cL === 'RO' ? '🎓 Analiză detaliată cu Llama 70B' : '🎓 Детальный анализ с Llama 70B')}
+                                    : (cL === 'RO' ? '🎓 Analiză detaliată cu DeepSeek V3 (Evaluare BAC)' : '🎓 Детальный анализ с DeepSeek V3 (Evaluare BAC)')}
                             </p>
                         </div>
                     </div>
