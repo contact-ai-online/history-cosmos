@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 
 const app = new Hono();
 
+// CORS Configuration
 app.use('/*', cors({
   origin: ['https://history-cosmos.contact-ai.online', 'http://localhost:8788'],
   allowMethods: ['GET', 'POST', 'OPTIONS'],
@@ -16,14 +17,18 @@ app.post('/api/cronicus', async (c) => {
   try {
     const { question, mode = 'rapid' } = await c.req.json();
     
+    // Validare input
     if (!question || question.trim().length < 5) {
       return c.json({ error: 'Întrebare prea scurtă (minim 5 caractere)' }, 400);
     }
 
+    // ==========================================
     // MOD RAPID ⚡ - MISTRAL API DIRECT (PREMIUM)
+    // Consumă din creditul de $10
+    // ==========================================
     if (mode === 'rapid') {
       if (!c.env.MISTRAL_API_KEY) {
-        return c.json({ error: 'Mistral API key lipsește. Configurează cu: npx wrangler secret put MISTRAL_API_KEY' }, 500);
+        return c.json({ error: 'Mistral API key lipsește. Verifică Cloudflare Secrets.' }, 500);
       }
 
       const mistralResponse = await fetch('https://api.mistral.ai/v1/chat/completions', {
@@ -45,7 +50,6 @@ MOD RAPID - REGULI:
 ✅ STRUCTURAT: 1) Definiție/fapt central 2) Context rapid 3) Legătură cu programa
 ✅ ÎNCURAJATOR: "Excelentă întrebare!", "Foarte bine!"
 
-INTERZIS: Răspunsuri >250 cuvinte, termeni fără explicație
 LIMBA: Română (adaptează la rusă dacă elevul scrie în rusă)` 
             },
             { role: 'user', content: question }
@@ -57,10 +61,10 @@ LIMBA: Română (adaptează la rusă dacă elevul scrie în rusă)`
 
       if (!mistralResponse.ok) {
         const errorData = await mistralResponse.json().catch(() => ({}));
-        console.error('Mistral API error:', errorData);
+        console.error('Mistral API Error:', errorData);
         return c.json({ 
           error: `Mistral API error: ${errorData.error?.message || mistralResponse.statusText}`,
-          details: errorData 
+          details: errorData
         }, mistralResponse.status);
       }
 
@@ -81,12 +85,13 @@ LIMBA: Română (adaptează la rusă dacă elevul scrie în rusă)`
       });
     } 
     
+    // ==========================================
     // MOD PROFUND 🎓 - DEEPSEEK API DIRECT (PREMIUM)
+    // Consumă din creditul de $5
+    // ==========================================
     else {
       if (!c.env.DEEPSEEK_API_KEY) {
-        return c.json({ 
-          error: 'DeepSeek API key lipsește. Configurează cu: npx wrangler secret put DEEPSEEK_API_KEY' 
-        }, 500);
+        return c.json({ error: 'DeepSeek API key lipsește. Verifică Cloudflare Secrets.' }, 500);
       }
 
       const deepseekResponse = await fetch('https://api.deepseek.com/v1/chat/completions', {
@@ -124,10 +129,10 @@ STIL: Academic dar accesibil, terminologie precisă, perspective multiple`
 
       if (!deepseekResponse.ok) {
         const errorData = await deepseekResponse.json().catch(() => ({}));
-        console.error('DeepSeek API error:', errorData);
+        console.error('DeepSeek API Error:', errorData);
         return c.json({ 
           error: `DeepSeek API error: ${errorData.error?.message || deepseekResponse.statusText}`,
-          details: errorData 
+          details: errorData
         }, deepseekResponse.status);
       }
 
@@ -151,28 +156,24 @@ STIL: Academic dar accesibil, terminologie precisă, perspective multiple`
   } catch (error) {
     console.error('CRONICUS Error:', error);
     return c.json({ 
-      error: 'Eroare la procesarea întrebării',
+      error: 'Eroare internă la procesarea întrebării',
       details: error.message 
     }, 500);
   }
 });
 
-// Health check cu informații complete despre dual premium
+// Health check endpoint
 app.get('/api/health', (c) => {
   return c.json({ 
     status: 'ok',
     timestamp: new Date().toISOString(),
     architecture: {
-      rapid: 'Mistral API Direct (Premium) - $10 credit',
-      profund: 'DeepSeek API Direct (Premium) - $5 credit'
+      rapid: 'Mistral API Direct (Premium)',
+      profund: 'DeepSeek API Direct (Premium)'
     },
     cost_summary: {
       monthly_estimate: '€0.127',
-      credit_duration: '107+ months with normal usage',
-      breakdown: {
-        rapid_mode: 'Mistral API - €0.043/month',
-        profund_mode: 'DeepSeek API - €0.084/month'
-      }
+      credit_duration: '107+ months with normal usage'
     }
   });
 });
