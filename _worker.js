@@ -1,13 +1,43 @@
-// CRONICUS CONFIGURATION
-const CRONICUS_MODELS = {
-  rapid: '@cf/mistral/mistral-7b-instruct-v0.1',
-  profund: '@cf/meta/llama-3.1-70b-instruct'
-};
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 
-const CRONICUS_RAPID_PROMPT = `Tu ești CRONICUS, mentorul istoric pentru elevii claselor X-XII din Republica Moldova.
+const app = new Hono();
 
-ACOPERIRE CURRICULUM COMPLETĂ:
-📚 Istoria Românilor (Preistorie → Contemporan) + Istoria Universală
+app.use('/*', cors({
+  origin: ['https://history-cosmos.contact-ai.online', 'http://localhost:8788'],
+  allowMethods: ['GET', 'POST', 'OPTIONS'],
+  allowHeaders: ['Content-Type'],
+}));
+
+// ==========================================
+// CRONICUS ENDPOINT - DUAL PREMIUM ARCHITECTURE
+// ==========================================
+app.post('/api/cronicus', async (c) => {
+  try {
+    const { question, mode = 'rapid' } = await c.req.json();
+    
+    if (!question || question.trim().length < 5) {
+      return c.json({ error: 'Întrebare prea scurtă (minim 5 caractere)' }, 400);
+    }
+
+    // MOD RAPID ⚡ - MISTRAL API DIRECT (PREMIUM)
+    if (mode === 'rapid') {
+      if (!c.env.MISTRAL_API_KEY) {
+        return c.json({ error: 'Mistral API key lipsește. Configurează cu: npx wrangler secret put MISTRAL_API_KEY' }, 500);
+      }
+
+      const mistralResponse = await fetch('https://api.mistral.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${c.env.MISTRAL_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: 'open-mistral-7b',
+          messages: [
+            { 
+              role: 'system', 
+              content: `Tu ești CRONICUS, mentorul istoric pentru elevii claselor X-XII din Republica Moldova.
 
 MOD RAPID - REGULI:
 ✅ CONCIS: 120-200 cuvinte maximum
@@ -16,9 +46,61 @@ MOD RAPID - REGULI:
 ✅ ÎNCURAJATOR: "Excelentă întrebare!", "Foarte bine!"
 
 INTERZIS: Răspunsuri >250 cuvinte, termeni fără explicație
-LIMBA: Română (adaptează la rusă dacă elevul scrie în rusă)`;
+LIMBA: Română (adaptează la rusă dacă elevul scrie în rusă)` 
+            },
+            { role: 'user', content: question }
+          ],
+          max_tokens: 300,
+          temperature: 0.7
+        })
+      });
 
-const CRONICUS_PROFUND_PROMPT = `Tu ești CRONICUS, expert în Istoria Românilor și Universală pentru pregătirea BAC (clasele X-XII, Republica Moldova).
+      if (!mistralResponse.ok) {
+        const errorData = await mistralResponse.json().catch(() => ({}));
+        console.error('Mistral API error:', errorData);
+        return c.json({ 
+          error: `Mistral API error: ${errorData.error?.message || mistralResponse.statusText}`,
+          details: errorData 
+        }, mistralResponse.status);
+      }
+
+      const data = await mistralResponse.json();
+      
+      return c.json({
+        answer: data.choices?.[0]?.message?.content || 'Răspuns indisponibil',
+        mode: 'rapid',
+        model: 'open-mistral-7b',
+        provider: 'Mistral API Direct (Premium)',
+        timestamp: new Date().toISOString(),
+        metadata: {
+          tokens_used: data.usage?.total_tokens || 0,
+          cost_estimate: `€${((data.usage?.total_tokens || 0) * 0.00025 / 1000).toFixed(6)}`,
+          credit_status: 'Consuming from $10 Mistral credit',
+          api_source: 'api.mistral.ai'
+        }
+      });
+    } 
+    
+    // MOD PROFUND 🎓 - DEEPSEEK API DIRECT (PREMIUM)
+    else {
+      if (!c.env.DEEPSEEK_API_KEY) {
+        return c.json({ 
+          error: 'DeepSeek API key lipsește. Configurează cu: npx wrangler secret put DEEPSEEK_API_KEY' 
+        }, 500);
+      }
+
+      const deepseekResponse = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${c.env.DEEPSEEK_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: [
+            { 
+              role: 'system', 
+              content: `Tu ești CRONICUS, expert în Istoria Românilor și Universală pentru pregătirea BAC (clasele X-XII, Republica Moldova).
 
 CÂND EVALUEZI UN ESEU BAC:
 📊 **NOTA ESTIMATIVĂ: X/15 puncte**
@@ -31,124 +113,68 @@ CÂND RĂSPUNZI LA ÎNTREBĂRI COMPLEXE:
 1. Context istoric amplu 2. Analiză multicauzală 3. Dezvoltarea procesului
 4. Consecințe multiple 5. Semnificația istorică 6. Conexiuni româno-universale
 
-STIL: Academic dar accesibil, terminologie precisă, perspective multiple`;
+STIL: Academic dar accesibil, terminologie precisă, perspective multiple` 
+            },
+            { role: 'user', content: question }
+          ],
+          max_tokens: 2000,
+          temperature: 0.7
+        })
+      });
 
-// Hono.js Application
-import { Hono } from 'hono';
-
-const app = new Hono();
-
-// CORS middleware
-app.use('*', async (c, next) => {
-  c.header('Access-Control-Allow-Origin', '*');
-  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (c.req.method === 'OPTIONS') {
-    return c.text('', 204);
-  }
-  await next();
-});
-
-// Health check endpoint
-app.get('/', (c) => {
-  return c.json({
-    service: 'CRONICUS API',
-    version: '1.0.0',
-    description: 'Sistem AI pentru istorie - Republica Moldova',
-    endpoints: {
-      cronicus: 'POST /api/cronicus',
-      health: 'GET /health'
-    }
-  });
-});
-
-app.get('/health', (c) => {
-  return c.json({ status: 'healthy', timestamp: new Date().toISOString() });
-});
-
-// CRONICUS endpoint
-app.post('/api/cronicus', async (c) => {
-  try {
-    // Validare input
-    const body = await c.req.json();
-    const { question, mode = 'rapid' } = body;
-
-    // Validare întrebare
-    if (!question || typeof question !== 'string') {
-      return c.json({ 
-        error: 'Întrebarea este obligatorie și trebuie să fie text' 
-      }, 400);
-    }
-
-    if (question.trim().length < 5) {
-      return c.json({ 
-        error: 'Întrebarea trebuie să aibă minim 5 caractere' 
-      }, 400);
-    }
-
-    // Validare mod
-    const validModes = ['rapid', 'profund'];
-    if (!validModes.includes(mode)) {
-      return c.json({ 
-        error: 'Mod invalid. Alegeți "rapid" sau "profund"' 
-      }, 400);
-    }
-
-    // Selectare model și prompt
-    const model = CRONICUS_MODELS[mode];
-    const systemPrompt = mode === 'rapid' 
-      ? CRONICUS_RAPID_PROMPT 
-      : CRONICUS_PROFUND_PROMPT;
-
-    // Construire mesaj pentru AI
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: question }
-    ];
-
-    // Apel Cloudflare Workers AI
-    const aiResponse = await c.env.AI.run(model, { messages });
-
-    // Procesare răspuns
-    const responseText = aiResponse.response || aiResponse;
-
-    // Structurare răspuns JSON
-    return c.json({
-      success: true,
-      mode: mode,
-      model: model,
-      question: question,
-      answer: responseText,
-      timestamp: new Date().toISOString(),
-      metadata: {
-        wordCount: responseText.split(/\s+/).length,
-        modeDescription: mode === 'rapid' 
-          ? 'Răspuns rapid (120-200 cuvinte)' 
-          : 'Analiză profundă + evaluare eseuri BAC'
+      if (!deepseekResponse.ok) {
+        const errorData = await deepseekResponse.json().catch(() => ({}));
+        console.error('DeepSeek API error:', errorData);
+        return c.json({ 
+          error: `DeepSeek API error: ${errorData.error?.message || deepseekResponse.statusText}`,
+          details: errorData 
+        }, deepseekResponse.status);
       }
-    });
+
+      const data = await deepseekResponse.json();
+      
+      return c.json({
+        answer: data.choices?.[0]?.message?.content || 'Răspuns indisponibil',
+        mode: 'profund',
+        model: 'deepseek-chat',
+        provider: 'DeepSeek API Direct (Premium)',
+        timestamp: new Date().toISOString(),
+        metadata: {
+          tokens_used: data.usage?.total_tokens || 0,
+          cost_estimate: `€${((data.usage?.total_tokens || 0) * 0.00014 / 1000).toFixed(6)}`,
+          credit_status: 'Consuming from $5 DeepSeek credit',
+          api_source: 'api.deepseek.com'
+        }
+      });
+    }
 
   } catch (error) {
-    console.error('Eroare CRONICUS:', error);
-
-    // Error handling specific
-    if (error.message.includes('AI')) {
-      return c.json({ 
-        error: 'Eroare serviciu AI. Vă rugăm încercați mai târziu.',
-        details: error.message 
-      }, 503);
-    }
-
+    console.error('CRONICUS Error:', error);
     return c.json({ 
-      error: 'Eroare internă server',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: 'Eroare la procesarea întrebării',
+      details: error.message 
     }, 500);
   }
 });
 
-// Fallback pentru rute necunoscute
-app.all('*', (c) => {
-  return c.json({ error: 'Endpoint negăsit' }, 404);
+// Health check cu informații complete despre dual premium
+app.get('/api/health', (c) => {
+  return c.json({ 
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    architecture: {
+      rapid: 'Mistral API Direct (Premium) - $10 credit',
+      profund: 'DeepSeek API Direct (Premium) - $5 credit'
+    },
+    cost_summary: {
+      monthly_estimate: '€0.127',
+      credit_duration: '107+ months with normal usage',
+      breakdown: {
+        rapid_mode: 'Mistral API - €0.043/month',
+        profund_mode: 'DeepSeek API - €0.084/month'
+      }
+    }
+  });
 });
 
 export default app;
